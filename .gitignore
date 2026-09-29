@@ -1,0 +1,13 @@
+# Dati originali RECMOP (proprietà del laboratorio)
+backend/preparazione/input/
+
+# Ambiente virtuale Python
+.venv/
+__pycache__/
+
+# Credenziali e configurazione locale
+.env
+
+# File di sistema
+Thumbs.db
+desktop.ini
