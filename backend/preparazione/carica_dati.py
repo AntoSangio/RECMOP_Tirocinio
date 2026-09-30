@@ -140,6 +140,105 @@ def carica_edifici(conn, cartella_scenario):
         print(f"  ATTENZIONE: {senza_ruolo} edifici senza ruolo assegnato")
 
 
+def carica_scenario(conn, codice_scenario, cartella_scenario):
+    """
+    Carica uno scenario con le sue CER riuscite.
+    Le CER finali sono quelle del file successful_cer_configurations.csv.
+    I membri si ricavano dal codice della CER (es. '2053_2179_2008').
+    """
+    tabelle = INPUT / cartella_scenario / "data" / "tables"
+    print(f"\n--- Scenario {codice_scenario} ---")
+
+    with conn.cursor() as cur:
+        # 1. Inserisco (o reinserisco) lo scenario
+        cur.execute("DELETE FROM scenario WHERE codice = %s", (codice_scenario,))
+        cur.execute(
+            """
+            INSERT INTO scenario (codice, nome, comune)
+            VALUES (%s, %s, %s) RETURNING id
+            """,
+            (codice_scenario, f"Scenario {codice_scenario}", COMUNE),
+        )
+        scenario_id = cur.fetchone()[0]
+
+        # 2. Mappa id_edificio -> chiave interna della tabella edificio
+        cur.execute(
+            "SELECT id_edificio, id FROM edificio WHERE comune = %s", (COMUNE,)
+        )
+        chiave_edificio = {str(k): v for k, v in cur.fetchall()}
+
+        # 3. Leggo le CER riuscite
+        percorso = tabelle / "successful_cer_configurations.csv"
+        with open(percorso, newline="", encoding="utf-8") as f:
+            righe = list(csv.DictReader(f))
+        print(f"CER riuscite nel file: {len(righe)}")
+
+        n_cer = 0
+        n_membri = 0
+        n_mensili = 0
+        membri_mancanti = 0
+
+        for r in righe:
+            codice_cer = r["ID_Edificio"]          # qui il campo contiene il codice CER
+            membri = codice_cer.split("_")
+
+            # 4. Inserisco la CER
+            cur.execute(
+                """
+                INSERT INTO cer (
+                    scenario_id, codice, esito, n_membri, iterazione,
+                    domanda_annua, autoconsumo_fisico, autoconsumo_diffuso, eccedenza
+                ) VALUES (%s, %s, 'riuscita', %s, %s, %s, %s, %s, %s)
+                RETURNING id
+                """,
+                (
+                    scenario_id,
+                    codice_cer,
+                    len(membri),
+                    int(float(r["iterazione"])) if r.get("iterazione") else None,
+                    float(r["D_an"]) if r.get("D_an") else None,
+                    float(r["AF_an"]) if r.get("AF_an") else None,
+                    float(r["AD_an"]) if r.get("AD_an") else None,
+                    float(r["Sto_an"]) if r.get("Sto_an") else None,
+                ),
+            )
+            cer_id = cur.fetchone()[0]
+            n_cer += 1
+
+            # 5. Inserisco i membri
+            for m in membri:
+                if m in chiave_edificio:
+                    cur.execute(
+                        "INSERT INTO cer_membro (cer_id, edificio_id) VALUES (%s, %s)"
+                        " ON CONFLICT DO NOTHING",
+                        (cer_id, chiave_edificio[m]),
+                    )
+                    n_membri += 1
+                else:
+                    membri_mancanti += 1
+
+            # 6. Inserisco i dati mensili
+            for mese in range(1, 13):
+                af = r.get(f"AF_ms{mese}")
+                ad = r.get(f"AD_ms{mese}")
+                if af is None and ad is None:
+                    continue
+                cur.execute(
+                    """
+                    INSERT INTO cer_mensile (cer_id, mese, autoconsumo_fisico, autoconsumo_diffuso)
+                    VALUES (%s, %s, %s, %s)
+                    """,
+                    (cer_id, mese, float(af) if af else None, float(ad) if ad else None),
+                )
+                n_mensili += 1
+
+    conn.commit()
+
+    print(f"Inserite: {n_cer} CER, {n_membri} appartenenze, {n_mensili} valori mensili")
+    if membri_mancanti:
+        print(f"  ATTENZIONE: {membri_mancanti} membri non corrispondono a edifici noti")
+
+
 if __name__ == "__main__":
     print("=== Caricamento dati RECMOP ===")
 
@@ -151,6 +250,10 @@ if __name__ == "__main__":
 
     # Gli edifici sono comuni ai due scenari: li carico dal primo
     carica_edifici(conn, SCENARI["ambientale"])
+
+    # Poi carico ciascuno scenario con le sue CER
+    for codice, cartella in SCENARI.items():
+        carica_scenario(conn, codice, cartella)
 
     conn.close()
     print("\nCaricamento completato.")
