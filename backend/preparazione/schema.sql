@@ -41,6 +41,7 @@ CREATE TABLE cer
     n_consumer          INTEGER,
     ind_autosufficienza DOUBLE PRECISION,
     ind_ambientale      DOUBLE PRECISION,
+    indice              DOUBLE PRECISION,
     iterazione          INTEGER,
     domanda_annua       DOUBLE PRECISION,
     autoconsumo_fisico  DOUBLE PRECISION,
