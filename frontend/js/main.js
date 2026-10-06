@@ -6,7 +6,7 @@ import { creaMappa, disegnaEdifici, evidenziaComunita, pulisci } from "./mappa.j
 import { contenutoTerritorio } from "./viste/territorio.js";
 
 const API = "http://127.0.0.1:8000/api";
-const SCENARIO = "ambientale";
+let scenario = "ambientale";
 
 const scheda = document.getElementById("scheda");
 const contenuto = document.getElementById("contenuto");
@@ -107,7 +107,7 @@ async function cerca(testo) {
 // --- Dettaglio di un edificio ---
 
 async function apriEdificio(idEdificio) {
-  const dati = await fetch(`${API}/edificio/${idEdificio}/cer/${SCENARIO}`).then(r => r.json());
+  const dati = await fetch(`${API}/edificio/${idEdificio}/cer/${scenario}`).then(r => r.json());
   const e = dati.edificio;
 
   let html = `
@@ -194,7 +194,7 @@ document.querySelectorAll(".voce").forEach(voce => {
     if (sezione === "territorio") {
       mostraScheda(`<p class="aiuto">Caricamento…</p>`);
       pulisci();
-      mostraScheda(await contenutoTerritorio(SCENARIO));
+      mostraScheda(await contenutoTerritorio(scenario));
       contenuto.querySelectorAll(".tabella tbody tr").forEach(riga => {
         riga.onclick = () => apriComunita(riga.dataset.codice);
       });
@@ -220,10 +220,26 @@ document.querySelectorAll(".voce").forEach(voce => {
 });
 
 async function apriComunita(codice) {
-  const dati = await fetch(`${API}/cer/${SCENARIO}/${codice}`).then(r => r.json());
+  const dati = await fetch(`${API}/cer/${scenario}/${codice}`).then(r => r.json());
   if (dati.membri?.length) {
     evidenziaComunita(dati.membri[0].id_edificio, dati.membri);
   }
 }
+
+// --- Cambio di scenario ---
+
+document.querySelectorAll(".scelta").forEach(pulsante => {
+  pulsante.onclick = () => {
+    document.querySelectorAll(".scelta").forEach(p => p.classList.remove("attiva"));
+    pulsante.classList.add("attiva");
+    scenario = pulsante.dataset.scenario;
+
+    dimmi(`Scenario ${scenario}: le comunità cambiano, gli edifici restano gli stessi.`);
+
+    // Ricarico la sezione attualmente aperta con i dati del nuovo scenario
+    const attiva = document.querySelector(".voce.attiva");
+    if (attiva) attiva.click();
+  };
+});
 
 avvia();
