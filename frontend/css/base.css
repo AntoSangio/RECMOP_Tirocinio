@@ -1,12 +1,14 @@
 :root {
-  --scuro:  #0d4f4f;
-  --verde:  #16a34a;
-  --rosso:  #dc2626;
-  --blu:    #3b82f6;
-  --testo:  #1f2937;
-  --grigio: #6b7280;
-  --bordo:  #e5e7eb;
-  --sfondo: #f4f7f6;
+  --grafite:   #1c2230;
+  --grafite-2: #2a3345;
+  --indaco:    #4f5dd8;
+  --carta:     #ffffff;
+  --nebbia:    #eef0f5;
+  --testo:     #1c2230;
+  --tenue:     #6b7280;
+  --bordo:     #d9dde5;
+  --peb:       #16a34a;
+  --neb:       #dc2626;
 }
 
 * { box-sizing: border-box; }
@@ -14,48 +16,174 @@
 html, body {
   margin: 0;
   height: 100%;
-  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-family: "Titillium Web", system-ui, sans-serif;
   color: var(--testo);
+  font-size: 15px;
 }
 
-#app { display: flex; flex-direction: column; height: 100%; }
+#app { display: flex; height: 100%; }
 
-#barra {
-  background: var(--scuro);
+/* --- Colonna di navigazione --- */
+
+#colonna {
+  width: 84px;
+  flex: 0 0 84px;
+  background: var(--grafite);
   color: #fff;
-  padding: 12px 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  padding: 14px 0;
+  gap: 4px;
 }
-#barra .titolo { font-size: 17px; font-weight: 600; }
-#barra .sottotitolo { font-size: 13px; opacity: .8; }
 
-#contenitore { flex: 1; display: flex; min-height: 0; }
+.marchio {
+  font-weight: 700;
+  font-size: 19px;
+  letter-spacing: .5px;
+  text-align: center;
+  padding-bottom: 16px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid rgba(255,255,255,.14);
+}
 
-#mappa { flex: 1; }
+.voce {
+  background: none;
+  border: 0;
+  color: rgba(255,255,255,.72);
+  font-family: inherit;
+  font-size: 12px;
+  padding: 12px 4px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  border-left: 3px solid transparent;
+}
+.voce .segno { font-size: 19px; line-height: 1; }
+.voce:hover { color: #fff; background: rgba(255,255,255,.06); }
+.voce.attiva { color: #fff; border-left-color: var(--indaco); background: rgba(79,93,216,.18); }
+.voce:focus-visible { outline: 2px solid var(--indaco); outline-offset: -2px; }
 
-#pannello {
-  width: 340px;
-  padding: 18px;
+/* --- Mappa --- */
+
+#mappa { flex: 1; min-width: 0; height: 100%; }
+
+/* --- Scheda sovrapposta --- */
+
+#scheda {
+  position: absolute;
+  top: 20px;
+  left: 104px;
+  width: 370px;
+  max-height: calc(100% - 40px);
   overflow-y: auto;
-  background: var(--sfondo);
-  border-left: 1px solid var(--bordo);
+  background: var(--carta);
+  border: 1px solid var(--bordo);
+  border-radius: 4px;
+  box-shadow: 0 10px 34px rgba(28,34,48,.16);
+  z-index: 1000;
+  padding: 20px 22px 24px;
 }
+#scheda[hidden] { display: none; }
 
-.messaggio { color: var(--grigio); font-size: 14px; line-height: 1.5; }
+#chiudi {
+  position: absolute;
+  top: 12px; right: 12px;
+  background: none; border: 0;
+  font-size: 15px; color: var(--tenue);
+  cursor: pointer; padding: 4px;
+}
+#chiudi:hover { color: var(--testo); }
+
+/* --- Contenuti della scheda --- */
+
+.ricerca label { display: block; font-weight: 600; margin-bottom: 7px; }
+.ricerca .riga { display: flex; gap: 6px; }
+.ricerca input {
+  flex: 1; padding: 9px 11px;
+  border: 1px solid var(--bordo); border-radius: 3px;
+  font-family: inherit; font-size: 15px;
+}
+.ricerca input:focus {
+  outline: none; border-color: var(--indaco);
+  box-shadow: 0 0 0 3px rgba(79,93,216,.16);
+}
+.ricerca button {
+  padding: 9px 16px; border: 0; border-radius: 3px;
+  background: var(--indaco); color: #fff;
+  font-family: inherit; font-weight: 600; font-size: 15px; cursor: pointer;
+}
+.ricerca button:hover { background: #4250c4; }
+
+.aiuto { color: var(--tenue); font-size: 13.5px; line-height: 1.55; margin: 10px 0 0; }
+
+.intestazione { font-size: 21px; font-weight: 700; margin: 0 0 2px; }
+.occhiello { color: var(--tenue); font-size: 13.5px; margin: 0 0 16px; }
+
+.ruolo {
+  display: inline-block; font-weight: 600; font-size: 13px;
+  padding: 2px 10px; border-radius: 2px; margin-bottom: 12px;
+}
+.ruolo.peb { background: #e7f6ec; color: #136c34; }
+.ruolo.neb { background: #fdeaea; color: #a51b1b; }
+
+.dati { border-top: 1px solid var(--bordo); margin-top: 14px; padding-top: 12px; }
+.dato { display: flex; justify-content: space-between; gap: 12px; padding: 5px 0; }
+.dato .nome { color: var(--tenue); font-size: 14px; }
+.dato .valore { font-weight: 600; font-variant-numeric: tabular-nums; }
+
+.titoletto { font-weight: 700; font-size: 15px; margin: 20px 0 8px; }
+
+.membri { display: flex; flex-wrap: wrap; gap: 5px; }
+.membro {
+  font-size: 13px; font-variant-numeric: tabular-nums;
+  padding: 3px 9px; border-radius: 2px; border: 1px solid var(--bordo);
+  cursor: pointer; background: #fff;
+}
+.membro.peb { border-color: #9ad8b0; background: #f1faf4; }
+.membro.neb { border-color: #f0b4b4; background: #fdf3f3; }
+.membro:hover { border-color: var(--indaco); }
+
+/* --- Avviso di stato --- */
+
+#avviso {
+  position: absolute; bottom: 20px; left: 104px;
+  background: var(--grafite); color: #fff;
+  padding: 9px 15px; border-radius: 3px;
+  font-size: 13.5px; z-index: 1000;
+}
+#avviso[hidden] { display: none; }
+
+/* --- Legenda --- */
 
 .legenda {
-  background: #fff;
-  padding: 10px 14px;
-  border-radius: 8px;
-  box-shadow: 0 1px 6px rgba(0,0,0,.2);
-  font-size: 13px;
-  line-height: 1.8;
+  background: var(--carta);
+  border: 1px solid var(--bordo);
+  padding: 9px 13px; border-radius: 3px;
+  font-size: 13px; line-height: 1.75;
 }
-.legenda .voce { display: flex; align-items: center; gap: 8px; }
-.legenda .quadretto {
-  width: 14px; height: 14px; border-radius: 3px; flex: 0 0 14px;
-}
+.legenda .voce-legenda { display: flex; align-items: center; gap: 8px; }
+.legenda .campione { width: 13px; height: 13px; flex: 0 0 13px; border-radius: 2px; }
 
-@media (max-width: 700px) {
-  #contenitore { flex-direction: column; }
-  #pannello { width: auto; max-height: 45%; border-left: none; border-top: 1px solid var(--bordo); }
+/* --- Schermi piccoli --- */
+
+@media (max-width: 760px) {
+  #app { flex-direction: column-reverse; }
+  #colonna {
+    width: auto; flex: 0 0 auto;
+    flex-direction: row; justify-content: space-around;
+    padding: 0; gap: 0;
+  }
+  .marchio { display: none; }
+  .voce { border-left: 0; border-top: 3px solid transparent; flex: 1; }
+  .voce.attiva { border-left: 0; border-top-color: var(--indaco); }
+
+  #scheda {
+    top: auto; bottom: 0; left: 0;
+    width: 100%; max-height: 55%;
+    border-radius: 12px 12px 0 0;
+  }
+  #avviso { left: 12px; bottom: 76px; }
 }

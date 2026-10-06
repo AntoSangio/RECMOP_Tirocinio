@@ -215,3 +215,22 @@ def dettaglio_cer(scenario: str, codice: str):
     # CO2 evitata: fattore di emissione 0,268 kgCO2/kWh
     produzione = sum(m["produzione_annua"] or 0 for m in membri)
     comunita["co2_evitata_kg"] = round(produzione * 0.268 / 1000, 2)
+
+@app.get("/api/edificio-vicino")
+def edificio_vicino(lat: float, lon: float):
+    """
+    Edificio più vicino a un punto geografico.
+    Usa l'indice spaziale di PostGIS: la ricerca è immediata.
+    """
+    righe = interroga(
+        """
+        SELECT id_edificio, ruolo,
+               ST_Distance(geom::geography, ST_SetSRID(ST_Point(%s, %s), 4326)::geography) AS distanza_m
+        FROM edificio
+        WHERE comune = %s
+        ORDER BY geom <-> ST_SetSRID(ST_Point(%s, %s), 4326)
+        LIMIT 1
+        """,
+        (lon, lat, "Avellino", lon, lat),
+    )
+    return righe[0] if righe else {"id_edificio": None}

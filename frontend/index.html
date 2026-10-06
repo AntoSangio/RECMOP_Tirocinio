@@ -3,28 +3,48 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Comunità Energetiche Rinnovabili — Avellino</title>
+  <title>Comunità energetiche di Avellino</title>
 
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Titillium+Web:wght@400;600;700&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <link rel="stylesheet" href="css/base.css">
 </head>
 <body>
 
   <div id="app">
-    <header id="barra">
-      <div class="titolo">Comunità Energetiche Rinnovabili</div>
-      <div class="sottotitolo">Comune di Avellino</div>
-    </header>
 
-    <div id="contenitore">
-      <div id="mappa"></div>
-      <aside id="pannello">
-        <p class="messaggio">Caricamento dei dati in corso…</p>
-      </aside>
-    </div>
+    <nav id="colonna" aria-label="Sezioni">
+      <div class="marchio" title="Comunità energetiche di Avellino">CER</div>
+
+      <button class="voce attiva" data-sezione="cerca">
+        <span class="segno">⌕</span>
+        <span class="etichetta">Cerca</span>
+      </button>
+      <button class="voce" data-sezione="territorio">
+        <span class="segno">▦</span>
+        <span class="etichetta">Territorio</span>
+      </button>
+      <button class="voce" data-sezione="metodo">
+        <span class="segno">?</span>
+        <span class="etichetta">Metodo</span>
+      </button>
+    </nav>
+
+    <main id="mappa"></main>
+
+    <section id="scheda" hidden>
+      <button id="chiudi" aria-label="Chiudi">✕</button>
+      <div id="contenuto"></div>
+    </section>
+
+    <div id="avviso">Caricamento degli edifici…</div>
+
   </div>
 
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script type="module" src="js/main.js"></script>
 </body>
 </html>
