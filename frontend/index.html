@@ -13,24 +13,65 @@
 </head>
 <body class="avvio">
 
-  <main id="ingresso">
-    <header>
+  <header id="apertura">
+    <div class="dentro">
       <p class="progetto">RECMOP</p>
-      <h1>Comunità energetiche rinnovabili</h1>
-      <p class="spiegazione">
-        Consulta i risultati dell'analisi sulle comunità energetiche:
-        quali edifici condividono energia, con quali risultati e dove
-        il territorio ha ancora margini di miglioramento.
+      <h1>
+        Chi produce energia<br>
+        <span class="secondo">la condivide con il vicinato</span>
+      </h1>
+      <p class="sommario">
+        Una comunità energetica rinnovabile è un gruppo di edifici che producono,
+        consumano e condividono energia a livello locale. Questa applicazione mostra
+        quali edifici conviene aggregare, secondo l'analisi del modello RECMOP.
       </p>
-    </header>
-
-    <div id="elenco-comuni">
-      <p class="attesa">Caricamento dei comuni disponibili…</p>
     </div>
+  </header>
+
+  <main id="ingresso">
+
+    <section class="presentazione">
+      <div class="voce-presentazione">
+        <h2>Il progetto</h2>
+        <p>
+          RECMOP è un progetto del laboratorio LabGIS finanziato dal PNRR. Dai dati
+          degli edifici di un comune calcola fabbisogno energetico e produzione
+          fotovoltaica potenziale, e individua le aggregazioni più efficaci.
+        </p>
+      </div>
+
+      <div class="voce-presentazione">
+        <h2>Come lavora il modello</h2>
+        <p>
+          Ogni edificio è produttore o consumatore, a seconda del proprio bilancio
+          energetico. Il modello aggrega progressivamente gli edifici vicini e
+          accetta solo le comunità che superano una soglia di efficienza; le altre
+          vengono ricomposte e ritentate.
+        </p>
+      </div>
+
+      <div class="voce-presentazione">
+        <h2>Questa applicazione</h2>
+        <p>
+          Un cittadino può cercare il proprio indirizzo e scoprire con quali edifici
+          condivide energia. Un'amministrazione può osservare lo stato del territorio
+          e dove restano margini di miglioramento.
+        </p>
+      </div>
+    </section>
+
+    <section>
+      <h2 class="titolo-sezione">Scegli il comune da consultare</h2>
+      <div id="elenco-comuni">
+        <p class="attesa">Caricamento dei comuni disponibili…</p>
+      </div>
+    </section>
 
     <footer>
-      LabGIS · Università degli Studi di Salerno
+      <span>LabGIS · Università degli Studi di Salerno</span>
+      <span class="precisazione">L'applicazione consulta i risultati del modello: non ne esegue i calcoli.</span>
     </footer>
+
   </main>
 
   <script type="module" src="js/ingresso.js"></script>

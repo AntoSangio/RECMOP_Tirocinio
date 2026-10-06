@@ -4,7 +4,8 @@
  */
 
 import { creaMappa, disegnaEdifici, evidenziaComunita, pulisci } from "./mappa.js";
-import { contenutoTerritorio } from "./viste/territorio.js";
+import { graficoMensile, pulisciGrafici } from "./grafici.js";
+import { contenutoTerritorio, graficiTerritorio } from "./viste/territorio.js";
 
 const API = "http://127.0.0.1:8000/api";
 
@@ -20,6 +21,7 @@ const avviso = document.getElementById("avviso");
 const numero = (n) => Math.round(n ?? 0).toLocaleString("it-IT");
 
 function mostraScheda(html) {
+  pulisciGrafici();
   contenuto.innerHTML = html;
   scheda.hidden = false;
   scheda.scrollTop = 0;
@@ -187,6 +189,13 @@ async function apriEdificio(idEdificio) {
         <span class="valore">${numero(c.co2_evitata_kg)} kg CO₂</span></div>
     </div>
 
+        <p class="titoletto">Energia nel corso dell'anno</p>
+    <div class="grafico"><canvas id="mensile"></canvas></div>
+    <p class="didascalia">
+      Quanta energia prodotta viene consumata sul posto e quanta viene condivisa
+      con gli altri edifici della comunità, mese per mese.
+    </p>
+
     <p class="titoletto">Edifici che la compongono</p>
     <div class="membri">
       ${membri.map(m => `
@@ -197,6 +206,10 @@ async function apriEdificio(idEdificio) {
     <p class="aiuto">Verde: produce energia. Rosso: la consuma.</p>`;
 
   mostraScheda(html);
+    const mensili = dati.comunita.mensili;
+  if (mensili?.length) {
+    graficoMensile(document.getElementById("mensile"), mensili);
+  }
   evidenziaComunita(idEdificio, membri);
 
   contenuto.querySelectorAll(".membro").forEach(el => {
@@ -230,7 +243,9 @@ document.querySelectorAll(".voce").forEach(voce => {
     if (sezione === "territorio") {
       mostraScheda(`<p class="aiuto">Caricamento…</p>`);
       pulisci();
-      mostraScheda(await contenutoTerritorio(comune, scenario, nomeComune));
+      const vista = await contenutoTerritorio(comune, scenario, nomeComune);
+      mostraScheda(vista.html);
+      graficiTerritorio(vista.distribuzioni);
       contenuto.querySelectorAll(".tabella tbody tr").forEach(riga => {
         riga.onclick = () => apriComunita(riga.dataset.codice);
       });

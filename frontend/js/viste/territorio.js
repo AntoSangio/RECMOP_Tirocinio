@@ -2,14 +2,17 @@
  * Vista territorio: quadro d'insieme per l'amministrazione comunale.
  */
 
+import { graficoDimensioni, graficoIterazioni } from "../grafici.js";
+
 const API = "http://127.0.0.1:8000/api";
 const numero = (n) => Math.round(n ?? 0).toLocaleString("it-IT");
 
 export async function contenutoTerritorio(comune, scenario, nomeComune) {
-  const [kpi, elenco, confronto] = await Promise.all([
+    const [kpi, elenco, confronto, distribuzioni] = await Promise.all([
     fetch(`${API}/${comune}/kpi/${scenario}`).then(r => r.json()),
     fetch(`${API}/${comune}/cer/${scenario}`).then(r => r.json()),
     fetch(`${API}/${comune}/confronto`).then(r => r.json()),
+    fetch(`${API}/${comune}/distribuzioni/${scenario}`).then(r => r.json()),
   ]);
 
   const righe = elenco.slice(0, 40).map(c => `
@@ -25,7 +28,7 @@ export async function contenutoTerritorio(comune, scenario, nomeComune) {
       <span class="valore">${s.riuscite} comunità · ${numero(s.energia_condivisa)} kWh</span>
     </div>`).join("");
 
-  return `
+    const html = `
     <h1 class="intestazione">Il territorio</h1>
         <p class="occhiello">${nomeComune}, scenario ${scenario}</p>
 
@@ -59,6 +62,18 @@ export async function contenutoTerritorio(comune, scenario, nomeComune) {
     <p class="titoletto">I due scenari a confronto</p>
     <div class="dati" style="border-top:0; padding-top:0;">${confrontoRighe}</div>
 
+        <p class="titoletto">Quanto sono grandi le comunità</p>
+    <div class="grafico"><canvas id="dimensioni"></canvas></div>
+    <p class="didascalia">
+      Numero di comunità per quantità di edifici che le compongono.
+    </p>
+
+    <p class="titoletto">Come procede l'aggregazione</p>
+    <div class="grafico"><canvas id="iterazioni"></canvas></div>
+    <p class="didascalia">
+      A ogni iterazione il modello tenta nuove aggregazioni: le prime sono le più
+      vantaggiose, poi restano edifici via via più difficili da combinare.
+    </p>
     <p class="titoletto">Comunità per energia condivisa</p>
     <table class="tabella">
       <thead>
@@ -67,4 +82,15 @@ export async function contenutoTerritorio(comune, scenario, nomeComune) {
       <tbody>${righe}</tbody>
     </table>
     <p class="aiuto">Sono mostrate le prime 40 comunità su ${elenco.length}. Clicca una riga per vederla sulla mappa.</p>`;
+    
+  return { html, distribuzioni };
+}
+
+/** Disegna i grafici della vista: va chiamata dopo aver inserito l'HTML. */
+export function graficiTerritorio(distribuzioni) {
+  const d = document.getElementById("dimensioni");
+  if (d) graficoDimensioni(d, distribuzioni.dimensione_cer);
+
+  const i = document.getElementById("iterazioni");
+  if (i) graficoIterazioni(i, distribuzioni.iterazioni);
 }
