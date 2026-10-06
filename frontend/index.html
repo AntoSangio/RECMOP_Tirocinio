@@ -67,6 +67,44 @@
       </div>
     </section>
 
+    <section id="sezione-dati">
+      <h2 class="titolo-sezione">Dati del sistema</h2>
+      <p class="introduzione-sezione">
+        I dati provengono dai pacchetti prodotti dal modello RECMOP. Ogni pacchetto
+        contiene gli edifici di un comune e i risultati di uno scenario di aggregazione.
+      </p>
+
+      <form id="modulo" class="modulo">
+        <div class="campo">
+          <label for="file">Pacchetto dello scenario</label>
+          <input id="file" type="file" accept=".zip" required>
+          <p class="aiuto-campo">
+            Archivio zip con un nome del tipo
+            <code>package_&lt;comune&gt;_&lt;scenario&gt;.zip</code>:
+            comune e scenario vengono riconosciuti dal nome.
+          </p>
+        </div>
+
+        <div class="coppia">
+          <div class="campo">
+            <label for="nome">Nome del comune</label>
+            <input id="nome" type="text" placeholder="Avellino">
+            <p class="aiuto-campo">Se lasciato vuoto viene ricavato dal pacchetto.</p>
+          </div>
+          <div class="campo">
+            <label for="provincia">Provincia</label>
+            <input id="provincia" type="text" placeholder="Avellino">
+          </div>
+        </div>
+
+        <button type="submit" id="invia">Carica e importa</button>
+      </form>
+
+      <div id="esito"></div>
+
+      <div id="presenti"></div>
+    </section>
+
     <footer>
       <span>LabGIS · Università degli Studi di Salerno</span>
       <span class="precisazione">L'applicazione consulta i risultati del modello: non ne esegue i calcoli.</span>
