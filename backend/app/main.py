@@ -352,3 +352,99 @@ def confronto(comune: str):
         """,
         (comune,),
     )
+
+# --- Gestione dei dati ---
+
+import shutil
+import tempfile
+import zipfile
+from fastapi import UploadFile, File, Form
+
+from app.importazione import importa_pacchetto
+
+
+def connessione():
+    """Connessione da usare per le operazioni di scrittura."""
+    return psycopg.connect(**DB, row_factory=dict_row)
+
+
+@app.post("/api/gestione/importa")
+async def importa(
+    pacchetto: UploadFile = File(...),
+    nome_comune: str = Form(None),
+    provincia: str = Form(None),
+):
+    """
+    Riceve un pacchetto RECMOP in formato zip, lo elabora e lo inserisce
+    nella base di dati. Restituisce il resoconto dell'operazione.
+    """
+    if not pacchetto.filename.lower().endswith(".zip"):
+        raise HTTPException(status_code=400, detail="È richiesto un file in formato zip.")
+
+    with tempfile.TemporaryDirectory() as temporanea:
+        temporanea = Path(temporanea)
+        archivio = temporanea / pacchetto.filename
+
+        # Salvo il file ricevuto
+        with open(archivio, "wb") as f:
+            shutil.copyfileobj(pacchetto.file, f)
+
+        # Lo estraggo
+        estratto = temporanea / "estratto"
+        try:
+            with zipfile.ZipFile(archivio) as z:
+                z.extractall(estratto)
+        except zipfile.BadZipFile:
+            raise HTTPException(status_code=400, detail="Il file non è un archivio zip valido.")
+
+        # Individuo la cartella del pacchetto, anche se annidata
+        cartella = None
+        for candidata in [estratto, *estratto.rglob("*")]:
+            if candidata.is_dir() and (candidata / "data").is_dir():
+                cartella = candidata
+                break
+
+        if cartella is None:
+            raise HTTPException(
+                status_code=400,
+                detail="Nell'archivio non è stata trovata la cartella di un pacchetto RECMOP.",
+            )
+
+        try:
+            with connessione() as conn:
+                return importa_pacchetto(conn, cartella, nome_comune, provincia)
+        except ValueError as errore:
+            raise HTTPException(status_code=400, detail=str(errore))
+
+
+@app.delete("/api/gestione/comune/{codice}")
+def elimina_comune(codice: str):
+    """Rimuove un comune e tutti i suoi dati."""
+    with connessione() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM comune WHERE codice = %s RETURNING nome", (codice,))
+            riga = cur.fetchone()
+        conn.commit()
+    if not riga:
+        raise HTTPException(status_code=404, detail="Comune non trovato")
+    return {"eliminato": riga["nome"]}
+
+
+@app.delete("/api/gestione/comune/{codice}/scenario/{scenario}")
+def elimina_scenario(codice: str, scenario: str):
+    """Rimuove un singolo scenario di un comune."""
+    with connessione() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                DELETE FROM scenario s USING comune c
+                WHERE s.comune_id = c.id AND c.codice = %s AND s.codice = %s
+                RETURNING s.nome
+                """,
+                (codice, scenario),
+            )
+            riga = cur.fetchone()
+        conn.commit()
+    if not riga:
+        raise HTTPException(status_code=404, detail="Scenario non trovato")
+    return {"eliminato": riga["nome"]}
