@@ -1,0 +1,61 @@
+:root {
+  --scuro:  #0d4f4f;
+  --verde:  #16a34a;
+  --rosso:  #dc2626;
+  --blu:    #3b82f6;
+  --testo:  #1f2937;
+  --grigio: #6b7280;
+  --bordo:  #e5e7eb;
+  --sfondo: #f4f7f6;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  color: var(--testo);
+}
+
+#app { display: flex; flex-direction: column; height: 100%; }
+
+#barra {
+  background: var(--scuro);
+  color: #fff;
+  padding: 12px 20px;
+}
+#barra .titolo { font-size: 17px; font-weight: 600; }
+#barra .sottotitolo { font-size: 13px; opacity: .8; }
+
+#contenitore { flex: 1; display: flex; min-height: 0; }
+
+#mappa { flex: 1; }
+
+#pannello {
+  width: 340px;
+  padding: 18px;
+  overflow-y: auto;
+  background: var(--sfondo);
+  border-left: 1px solid var(--bordo);
+}
+
+.messaggio { color: var(--grigio); font-size: 14px; line-height: 1.5; }
+
+.legenda {
+  background: #fff;
+  padding: 10px 14px;
+  border-radius: 8px;
+  box-shadow: 0 1px 6px rgba(0,0,0,.2);
+  font-size: 13px;
+  line-height: 1.8;
+}
+.legenda .voce { display: flex; align-items: center; gap: 8px; }
+.legenda .quadretto {
+  width: 14px; height: 14px; border-radius: 3px; flex: 0 0 14px;
+}
+
+@media (max-width: 700px) {
+  #contenitore { flex-direction: column; }
+  #pannello { width: auto; max-height: 45%; border-left: none; border-top: 1px solid var(--bordo); }
+}
