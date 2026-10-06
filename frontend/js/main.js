@@ -3,6 +3,7 @@
  */
 
 import { creaMappa, disegnaEdifici, evidenziaComunita, pulisci } from "./mappa.js";
+import { contenutoTerritorio } from "./viste/territorio.js";
 
 const API = "http://127.0.0.1:8000/api";
 const SCENARIO = "ambientale";
@@ -175,5 +176,54 @@ document.getElementById("chiudi").onclick = () => {
   scheda.hidden = true;
   pulisci();
 };
+
+// --- Navigazione tra le sezioni ---
+
+document.querySelectorAll(".voce").forEach(voce => {
+  voce.onclick = async () => {
+    document.querySelectorAll(".voce").forEach(v => v.classList.remove("attiva"));
+    voce.classList.add("attiva");
+
+    const sezione = voce.dataset.sezione;
+
+    if (sezione === "cerca") {
+      pulisci();
+      pannelloRicerca();
+    }
+
+    if (sezione === "territorio") {
+      mostraScheda(`<p class="aiuto">Caricamento…</p>`);
+      pulisci();
+      mostraScheda(await contenutoTerritorio(SCENARIO));
+      contenuto.querySelectorAll(".tabella tbody tr").forEach(riga => {
+        riga.onclick = () => apriComunita(riga.dataset.codice);
+      });
+    }
+
+    if (sezione === "metodo") {
+      pulisci();
+      mostraScheda(`
+        <h1 class="intestazione">Come nascono i dati</h1>
+        <p class="occhiello">Modello RECMOP</p>
+        <p class="aiuto">
+          Il modello calcola per ogni edificio la domanda e la produzione di energia,
+          classificandolo come produttore (PEB) o consumatore (NEB). Aggrega poi
+          progressivamente gli edifici in comunità, accettando solo le aggregazioni
+          che superano una soglia di efficienza; le altre vengono ricomposte e
+          ritentate nelle iterazioni successive.
+        </p>
+        <p class="aiuto">
+          Questa applicazione non esegue i calcoli: ne consulta i risultati.
+        </p>`);
+    }
+  };
+});
+
+async function apriComunita(codice) {
+  const dati = await fetch(`${API}/cer/${SCENARIO}/${codice}`).then(r => r.json());
+  if (dati.membri?.length) {
+    evidenziaComunita(dati.membri[0].id_edificio, dati.membri);
+  }
+}
 
 avvia();

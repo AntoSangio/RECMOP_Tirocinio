@@ -187,3 +187,36 @@ html, body {
   }
   #avviso { left: 12px; bottom: 76px; }
 }
+
+/* --- Cifre d'insieme --- */
+
+.cifre {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1px;
+  background: var(--bordo);
+  border: 1px solid var(--bordo);
+  margin: 16px 0 4px;
+}
+.cifra { background: var(--carta); padding: 13px 14px; }
+.cifra .grande {
+  display: block; font-size: 26px; font-weight: 700;
+  line-height: 1.1; font-variant-numeric: tabular-nums;
+}
+.cifra .minuta { display: block; font-size: 12.5px; color: var(--tenue); margin-top: 3px; }
+
+/* --- Tabella delle comunità --- */
+
+.tabella { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.tabella th {
+  text-align: left; font-weight: 600; color: var(--tenue);
+  border-bottom: 1px solid var(--bordo); padding: 6px 4px;
+}
+.tabella td { padding: 6px 4px; border-bottom: 1px solid var(--nebbia); }
+.tabella .num { text-align: right; font-variant-numeric: tabular-nums; }
+.tabella .codice {
+  font-variant-numeric: tabular-nums;
+  max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.tabella tbody tr { cursor: pointer; }
+.tabella tbody tr:hover { background: var(--nebbia); }

@@ -234,3 +234,59 @@ def edificio_vicino(lat: float, lon: float):
         (lon, lat, "Avellino", lon, lat),
     )
     return righe[0] if righe else {"id_edificio": None}
+
+@app.get("/api/distribuzioni/{scenario}")
+def distribuzioni(scenario: str):
+    """Distribuzioni utili ai grafici della vista territorio."""
+    per_dimensione = interroga(
+        """
+        SELECT c.n_membri AS dimensione, COUNT(*) AS numero
+        FROM cer c JOIN scenario s ON s.id = c.scenario_id
+        WHERE s.codice = %s AND c.esito = 'riuscita'
+        GROUP BY c.n_membri ORDER BY c.n_membri
+        """,
+        (scenario,),
+    )
+
+    per_iterazione = interroga(
+        """
+        SELECT c.iterazione,
+               COUNT(*) FILTER (WHERE c.esito = 'riuscita') AS riuscite,
+               COUNT(*) FILTER (WHERE c.esito = 'fallita')  AS fallite
+        FROM cer c JOIN scenario s ON s.id = c.scenario_id
+        WHERE s.codice = %s AND c.iterazione IS NOT NULL
+        GROUP BY c.iterazione ORDER BY c.iterazione
+        """,
+        (scenario,),
+    )
+
+    per_classe = interroga(
+        """
+        SELECT classe_energetica AS classe, COUNT(*) AS numero
+        FROM edificio WHERE comune = %s
+        GROUP BY classe_energetica ORDER BY classe_energetica
+        """,
+        ("Avellino",),
+    )
+
+    return {
+        "dimensione_cer": per_dimensione,
+        "iterazioni": per_iterazione,
+        "classi_energetiche": per_classe,
+    }
+
+
+@app.get("/api/confronto")
+def confronto():
+    """Indicatori dei due scenari affiancati."""
+    return interroga(
+        """
+        SELECT s.codice AS scenario,
+               COUNT(*) FILTER (WHERE c.esito = 'riuscita') AS riuscite,
+               COUNT(*) FILTER (WHERE c.esito = 'fallita')  AS fallite,
+               ROUND(AVG(c.n_membri) FILTER (WHERE c.esito = 'riuscita'), 1) AS membri_medi,
+               ROUND(SUM(c.autoconsumo_diffuso) FILTER (WHERE c.esito = 'riuscita')::numeric) AS energia_condivisa
+        FROM scenario s LEFT JOIN cer c ON c.scenario_id = s.id
+        GROUP BY s.codice ORDER BY s.codice
+        """
+    )
