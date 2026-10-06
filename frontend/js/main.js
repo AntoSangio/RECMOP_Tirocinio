@@ -1,12 +1,17 @@
 /**
- * Avvio dell'applicazione e gestione delle interazioni.
+ * Pagina della mappa: legge comune e scenario dall'indirizzo,
+ * carica i dati e gestisce le interazioni.
  */
 
 import { creaMappa, disegnaEdifici, evidenziaComunita, pulisci } from "./mappa.js";
 import { contenutoTerritorio } from "./viste/territorio.js";
 
 const API = "http://127.0.0.1:8000/api";
-let scenario = "ambientale";
+
+// Comune e scenario arrivano dalla pagina iniziale
+const parametri = new URLSearchParams(location.search);
+const comune = parametri.get("comune") || "avellino";
+let scenario = parametri.get("scenario") || "ambientale";
 
 const scheda = document.getElementById("scheda");
 const contenuto = document.getElementById("contenuto");
@@ -28,31 +33,60 @@ function dimmi(testo) {
 // --- Avvio ---
 
 async function avvia() {
-  creaMappa();
+  // Dati del comune: nome e centro della mappa
+  const comuni = await fetch(`${API}/comuni`).then(r => r.json());
+  const datiComune = comuni.find(c => c.codice === comune);
+
+  if (!datiComune) {
+    document.body.innerHTML = `<p style="padding:40px">Comune non trovato.</p>`;
+    return;
+  }
+
+  document.title = `RECMOP — ${datiComune.nome}`;
+  creaMappa([datiComune.lat, datiComune.lon]);
+  costruisciSceltaScenario(datiComune.scenari);
 
   try {
-    const risposta = await fetch(`${API}/edifici`);
-    const geojson = await risposta.json();
+    const geojson = await fetch(`${API}/${comune}/edifici`).then(r => r.json());
     disegnaEdifici(geojson, apriEdificio);
-    dimmi(`${geojson.features.length.toLocaleString("it-IT")} edifici sulla mappa`);
-    pannelloRicerca();
+    dimmi(`${datiComune.nome}: ${numero(geojson.features.length)} edifici`);
+    pannelloRicerca(datiComune.nome);
   } catch (errore) {
     dimmi("Server non raggiungibile. Avvia il backend e ricarica la pagina.");
     console.error(errore);
   }
 }
 
+function costruisciSceltaScenario(scenari) {
+  const contenitore = document.getElementById("scelta-scenario");
+  contenitore.innerHTML = `<span class="dicitura">Scenario</span>` +
+    scenari.map(s => `
+      <button class="scelta ${s.codice === scenario ? "attiva" : ""}" data-scenario="${s.codice}">
+        ${s.codice.charAt(0).toUpperCase() + s.codice.slice(1)}
+      </button>`).join("");
+
+  contenitore.querySelectorAll(".scelta").forEach(pulsante => {
+    pulsante.onclick = () => {
+      contenitore.querySelectorAll(".scelta").forEach(p => p.classList.remove("attiva"));
+      pulsante.classList.add("attiva");
+      scenario = pulsante.dataset.scenario;
+      dimmi(`Scenario ${scenario}: cambiano le comunità, gli edifici restano gli stessi.`);
+      document.querySelector(".voce.attiva")?.click();
+    };
+  });
+}
+
 // --- Ricerca ---
 
-function pannelloRicerca() {
+function pannelloRicerca(nomeComune) {
   mostraScheda(`
     <h1 class="intestazione">Trova la tua comunità</h1>
-    <p class="occhiello">Comune di Avellino, scenario ambientale</p>
+    <p class="occhiello">${nomeComune}, scenario ${scenario}</p>
 
     <div class="ricerca">
       <label for="indirizzo">Indirizzo o numero dell'edificio</label>
       <div class="riga">
-        <input id="indirizzo" type="text" placeholder="Corso Vittorio Emanuele">
+        <input id="indirizzo" type="text" placeholder="Via Roma">
         <button id="cerca">Cerca</button>
       </div>
       <p class="aiuto">
@@ -62,26 +96,23 @@ function pannelloRicerca() {
     </div>`);
 
   const campo = document.getElementById("indirizzo");
-  document.getElementById("cerca").onclick = () => cerca(campo.value);
-  campo.onkeydown = (e) => { if (e.key === "Enter") cerca(campo.value); };
+  document.getElementById("cerca").onclick = () => cerca(campo.value, nomeComune);
+  campo.onkeydown = (e) => { if (e.key === "Enter") cerca(campo.value, nomeComune); };
   campo.focus();
 }
 
-async function cerca(testo) {
+async function cerca(testo, nomeComune) {
   testo = testo.trim();
   if (!testo) return;
 
-  // Se è solo un numero, lo tratto come identificativo dell'edificio
   if (/^\d+$/.test(testo)) return apriEdificio(Number(testo));
 
   dimmi("Ricerca dell'indirizzo…");
-  const query = encodeURIComponent(`${testo}, Avellino, Italia`);
+  const query = encodeURIComponent(`${testo}, ${nomeComune}, Italia`);
   const url = `https://nominatim.openstreetmap.org/search?q=${query}&format=json&limit=1`;
 
   try {
-    const risposta = await fetch(url);
-    const trovati = await risposta.json();
-
+    const trovati = await fetch(url).then(r => r.json());
     if (!trovati.length) {
       dimmi("Indirizzo non trovato. Prova a essere più preciso o cerca per numero.");
       return;
@@ -89,14 +120,15 @@ async function cerca(testo) {
 
     const lat = parseFloat(trovati[0].lat);
     const lon = parseFloat(trovati[0].lon);
-    const vicino = await fetch(`${API}/edificio-vicino?lat=${lat}&lon=${lon}`).then(r => r.json());
+    const vicino = await fetch(`${API}/${comune}/edificio-vicino?lat=${lat}&lon=${lon}`)
+      .then(r => r.json());
 
     if (vicino.id_edificio == null) {
       dimmi("Nessun edificio trovato vicino a questo indirizzo.");
       return;
     }
 
-    dimmi(`Edificio più vicino all'indirizzo: ${vicino.id_edificio} (${Math.round(vicino.distanza_m)} m)`);
+    dimmi(`Edificio più vicino: ${vicino.id_edificio} (${Math.round(vicino.distanza_m)} m dall'indirizzo)`);
     apriEdificio(vicino.id_edificio);
   } catch (errore) {
     dimmi("Ricerca non riuscita. Riprova.");
@@ -107,7 +139,8 @@ async function cerca(testo) {
 // --- Dettaglio di un edificio ---
 
 async function apriEdificio(idEdificio) {
-  const dati = await fetch(`${API}/edificio/${idEdificio}/cer/${scenario}`).then(r => r.json());
+  const dati = await fetch(`${API}/${comune}/edificio/${idEdificio}/cer/${scenario}`)
+    .then(r => r.json());
   const e = dati.edificio;
 
   let html = `
@@ -166,16 +199,17 @@ async function apriEdificio(idEdificio) {
   mostraScheda(html);
   evidenziaComunita(idEdificio, membri);
 
-  // Cliccando un membro si apre la sua scheda
   contenuto.querySelectorAll(".membro").forEach(el => {
     el.onclick = () => apriEdificio(Number(el.dataset.id));
   });
 }
 
-document.getElementById("chiudi").onclick = () => {
-  scheda.hidden = true;
-  pulisci();
-};
+async function apriComunita(codice) {
+  const dati = await fetch(`${API}/${comune}/cer/${scenario}/${codice}`).then(r => r.json());
+  if (dati.membri?.length) {
+    evidenziaComunita(dati.membri[0].id_edificio, dati.membri);
+  }
+}
 
 // --- Navigazione tra le sezioni ---
 
@@ -185,16 +219,18 @@ document.querySelectorAll(".voce").forEach(voce => {
     voce.classList.add("attiva");
 
     const sezione = voce.dataset.sezione;
+    const comuni = await fetch(`${API}/comuni`).then(r => r.json());
+    const nomeComune = comuni.find(c => c.codice === comune)?.nome ?? comune;
 
     if (sezione === "cerca") {
       pulisci();
-      pannelloRicerca();
+      pannelloRicerca(nomeComune);
     }
 
     if (sezione === "territorio") {
       mostraScheda(`<p class="aiuto">Caricamento…</p>`);
       pulisci();
-      mostraScheda(await contenutoTerritorio(scenario));
+      mostraScheda(await contenutoTerritorio(comune, scenario, nomeComune));
       contenuto.querySelectorAll(".tabella tbody tr").forEach(riga => {
         riga.onclick = () => apriComunita(riga.dataset.codice);
       });
@@ -219,27 +255,9 @@ document.querySelectorAll(".voce").forEach(voce => {
   };
 });
 
-async function apriComunita(codice) {
-  const dati = await fetch(`${API}/cer/${scenario}/${codice}`).then(r => r.json());
-  if (dati.membri?.length) {
-    evidenziaComunita(dati.membri[0].id_edificio, dati.membri);
-  }
-}
-
-// --- Cambio di scenario ---
-
-document.querySelectorAll(".scelta").forEach(pulsante => {
-  pulsante.onclick = () => {
-    document.querySelectorAll(".scelta").forEach(p => p.classList.remove("attiva"));
-    pulsante.classList.add("attiva");
-    scenario = pulsante.dataset.scenario;
-
-    dimmi(`Scenario ${scenario}: le comunità cambiano, gli edifici restano gli stessi.`);
-
-    // Ricarico la sezione attualmente aperta con i dati del nuovo scenario
-    const attiva = document.querySelector(".voce.attiva");
-    if (attiva) attiva.click();
-  };
-});
+document.getElementById("chiudi").onclick = () => {
+  scheda.hidden = true;
+  pulisci();
+};
 
 avvia();

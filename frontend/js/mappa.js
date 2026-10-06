@@ -3,7 +3,6 @@
  * Il resto dell'applicazione non conosce i dettagli di Leaflet.
  */
 
-const CENTRO = [40.9174, 14.7892];   // Avellino
 const ZOOM = 14;
 
 const STILI = {
@@ -16,8 +15,8 @@ let mappa;
 let stratoEdifici;
 const edificiPerId = {};
 
-export function creaMappa() {
-  mappa = L.map("mappa").setView(CENTRO, ZOOM);
+export function creaMappa(centro) {
+  mappa = L.map("mappa").setView(centro, ZOOM);
 
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
     attribution: "© OpenStreetMap",

@@ -1,6 +1,9 @@
 """
 Caricamento degli output RECMOP nella base di dati.
 Legge i pacchetti in input/ e popola le tabelle del database.
+
+Il caricamento è organizzato per comune: per aggiungere un nuovo comune
+basta aggiungere una voce in COMUNI e mettere i pacchetti in input/.
 """
 
 import os
@@ -27,13 +30,25 @@ DB = {
     "password": os.getenv("DB_PASSWORD"),
 }
 
-# Gli scenari da caricare: codice interno -> cartella del pacchetto
-SCENARI = {
-    "ambientale": "student_package_avellino_ambientale",
-    "energetico": "student_package_avellino_energetico",
+# Comuni da caricare, con i rispettivi scenari e pacchetti
+COMUNI = {
+    "avellino": {
+        "nome": "Avellino",
+        "provincia": "Avellino",
+        "scenari": {
+            "ambientale": "student_package_avellino_ambientale",
+            "energetico": "student_package_avellino_energetico",
+        },
+    },
+    # Esempio per un comune futuro:
+    # "padula": {
+    #     "nome": "Padula",
+    #     "provincia": "Salerno",
+    #     "scenari": {
+    #         "ambientale": "student_package_padula_ambientale",
+    #     },
+    # },
 }
-
-COMUNE = "Avellino"
 
 
 def connetti():
@@ -49,23 +64,39 @@ def connetti():
 
 
 def verifica_input():
-    """Controlla che i pacchetti siano presenti."""
+    """Controlla che i pacchetti dichiarati siano presenti."""
     print("\nControllo dei pacchetti di input:")
     ok = True
-    for codice, cartella in SCENARI.items():
-        percorso = INPUT / cartella
-        if percorso.exists():
-            print(f"  [OK] {codice}: {cartella}")
-        else:
-            print(f"  [MANCANTE] {codice}: {percorso}")
-            ok = False
+    for codice_comune, dati in COMUNI.items():
+        for codice_scenario, cartella in dati["scenari"].items():
+            percorso = INPUT / cartella
+            etichetta = f"{dati['nome']} / {codice_scenario}"
+            if percorso.exists():
+                print(f"  [OK] {etichetta}")
+            else:
+                print(f"  [MANCANTE] {etichetta}: {percorso}")
+                ok = False
     return ok
 
 
-def carica_edifici(conn, cartella_scenario):
+def registra_comune(conn, codice, nome, provincia):
+    """Inserisce il comune se non c'è e ne restituisce l'identificativo."""
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO comune (codice, nome, provincia) VALUES (%s, %s, %s)
+            ON CONFLICT (codice) DO UPDATE SET nome = EXCLUDED.nome
+            RETURNING id
+            """,
+            (codice, nome, provincia),
+        )
+        return cur.fetchone()[0]
+
+
+def carica_edifici(conn, comune_id, nome_comune, cartella_scenario):
     """
     Carica gli edifici nella tabella 'edificio'.
-    Gli edifici sono comuni a tutti gli scenari: si caricano una volta sola.
+    Gli edifici sono comuni a tutti gli scenari di uno stesso comune.
     Il ruolo PEB/NEB è letto dai layer peb_initial e neb_initial.
     """
     base = INPUT / cartella_scenario / "data" / "geojson"
@@ -85,7 +116,7 @@ def carica_edifici(conn, cartella_scenario):
     # 3. Inserisco nel database
     senza_ruolo = 0
     with conn.cursor() as cur:
-        cur.execute("DELETE FROM edificio WHERE comune = %s", (COMUNE,))
+        cur.execute("DELETE FROM edificio WHERE comune_id = %s", (comune_id,))
 
         for e in edifici:
             p = e["properties"]
@@ -102,16 +133,17 @@ def carica_edifici(conn, cartella_scenario):
             cur.execute(
                 """
                 INSERT INTO edificio (
-                    comune, id_edificio, classe_energetica,
+                    comune, comune_id, id_edificio, classe_energetica,
                     domanda_annua, produzione_annua,
                     num_pannelli, potenza_picco, ruolo, geom
                 ) VALUES (
-                    %s, %s, %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s,
                     ST_Multi(ST_GeomFromGeoJSON(%s))
                 )
                 """,
                 (
-                    COMUNE,
+                    nome_comune,
+                    comune_id,
                     int(p["ID_Edificio"]),
                     p.get("classe_energetica"),
                     p.get("D_an2023"),
@@ -127,11 +159,11 @@ def carica_edifici(conn, cartella_scenario):
 
     # 4. Verifica di consistenza
     with conn.cursor() as cur:
-        cur.execute("SELECT COUNT(*) FROM edificio WHERE comune = %s", (COMUNE,))
+        cur.execute("SELECT COUNT(*) FROM edificio WHERE comune_id = %s", (comune_id,))
         totale = cur.fetchone()[0]
         cur.execute(
-            "SELECT ruolo, COUNT(*) FROM edificio WHERE comune = %s GROUP BY ruolo",
-            (COMUNE,),
+            "SELECT ruolo, COUNT(*) FROM edificio WHERE comune_id = %s GROUP BY ruolo",
+            (comune_id,),
         )
         per_ruolo = dict(cur.fetchall())
 
@@ -215,28 +247,33 @@ def carica_cer(cur, scenario_id, percorso_csv, esito, chiave_edificio):
         print(f"    ATTENZIONE: {mancanti} membri non corrispondono a edifici noti")
 
 
-def carica_scenario(conn, codice_scenario, cartella_scenario):
+def carica_scenario(conn, comune_id, nome_comune, codice_scenario, cartella_scenario):
     """
-    Carica uno scenario con le sue CER riuscite e fallite.
+    Carica uno scenario di un comune, con le sue CER riuscite e fallite.
     Le CER finali sono quelle dei file *_cer_configurations.csv.
     """
     tabelle = INPUT / cartella_scenario / "data" / "tables"
     print(f"\n--- Scenario {codice_scenario} ---")
 
     with conn.cursor() as cur:
-        # Inserisco (o reinserisco) lo scenario: le CER collegate si cancellano da sole
-        cur.execute("DELETE FROM scenario WHERE codice = %s", (codice_scenario,))
+        # Reinserisco lo scenario: le CER collegate si cancellano da sole
+        cur.execute(
+            "DELETE FROM scenario WHERE codice = %s AND comune_id = %s",
+            (codice_scenario, comune_id),
+        )
         cur.execute(
             """
-            INSERT INTO scenario (codice, nome, comune)
-            VALUES (%s, %s, %s) RETURNING id
+            INSERT INTO scenario (codice, nome, comune, comune_id)
+            VALUES (%s, %s, %s, %s) RETURNING id
             """,
-            (codice_scenario, f"Scenario {codice_scenario}", COMUNE),
+            (codice_scenario, f"Scenario {codice_scenario}", nome_comune, comune_id),
         )
         scenario_id = cur.fetchone()[0]
 
         # Mappa id_edificio -> chiave interna della tabella edificio
-        cur.execute("SELECT id_edificio, id FROM edificio WHERE comune = %s", (COMUNE,))
+        cur.execute(
+            "SELECT id_edificio, id FROM edificio WHERE comune_id = %s", (comune_id,)
+        )
         chiave_edificio = {str(k): v for k, v in cur.fetchall()}
 
         carica_cer(cur, scenario_id, tabelle / "successful_cer_configurations.csv",
@@ -256,12 +293,18 @@ if __name__ == "__main__":
 
     conn = connetti()
 
-    # Gli edifici sono comuni ai due scenari: li carico dal primo
-    carica_edifici(conn, SCENARI["ambientale"])
+    for codice_comune, dati in COMUNI.items():
+        print(f"\n===== {dati['nome']} =====")
+        comune_id = registra_comune(conn, codice_comune, dati["nome"], dati["provincia"])
+        conn.commit()
 
-    # Poi carico ciascuno scenario con le sue CER
-    for codice, cartella in SCENARI.items():
-        carica_scenario(conn, codice, cartella)
+        # Gli edifici sono gli stessi in tutti gli scenari del comune:
+        # li carico una volta sola, dal primo pacchetto
+        primo_pacchetto = next(iter(dati["scenari"].values()))
+        carica_edifici(conn, comune_id, dati["nome"], primo_pacchetto)
+
+        for codice_scenario, cartella in dati["scenari"].items():
+            carica_scenario(conn, comune_id, dati["nome"], codice_scenario, cartella)
 
     conn.close()
     print("\nCaricamento completato.")

@@ -5,11 +5,11 @@
 const API = "http://127.0.0.1:8000/api";
 const numero = (n) => Math.round(n ?? 0).toLocaleString("it-IT");
 
-export async function contenutoTerritorio(scenario, alClickCer) {
+export async function contenutoTerritorio(comune, scenario, nomeComune) {
   const [kpi, elenco, confronto] = await Promise.all([
-    fetch(`${API}/kpi/${scenario}`).then(r => r.json()),
-    fetch(`${API}/cer/${scenario}`).then(r => r.json()),
-    fetch(`${API}/confronto`).then(r => r.json()),
+    fetch(`${API}/${comune}/kpi/${scenario}`).then(r => r.json()),
+    fetch(`${API}/${comune}/cer/${scenario}`).then(r => r.json()),
+    fetch(`${API}/${comune}/confronto`).then(r => r.json()),
   ]);
 
   const righe = elenco.slice(0, 40).map(c => `
@@ -27,7 +27,7 @@ export async function contenutoTerritorio(scenario, alClickCer) {
 
   return `
     <h1 class="intestazione">Il territorio</h1>
-    <p class="occhiello">Comune di Avellino, scenario ${scenario}</p>
+        <p class="occhiello">${nomeComune}, scenario ${scenario}</p>
 
     <div class="cifre">
       <div class="cifra">

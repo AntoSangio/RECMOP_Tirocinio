@@ -265,3 +265,76 @@ html, body {
   }
   .scenario .dicitura { display: none; }
 }
+
+/* --- Pagina iniziale --- */
+
+body.avvio {
+  background: var(--grafite);
+  color: #fff;
+  display: flex;
+  justify-content: center;
+  padding: 0 24px;
+  overflow-y: auto;
+}
+
+#ingresso { width: 100%; max-width: 760px; padding: 72px 0 48px; }
+
+#ingresso .progetto {
+  font-weight: 700; letter-spacing: 1.5px;
+  color: rgba(255,255,255,.5); margin: 0 0 10px; font-size: 13px;
+}
+#ingresso h1 { font-size: 38px; line-height: 1.15; margin: 0 0 14px; font-weight: 700; }
+#ingresso .spiegazione {
+  color: rgba(255,255,255,.72); max-width: 60ch;
+  line-height: 1.6; margin: 0 0 40px;
+}
+
+.attesa { color: rgba(255,255,255,.6); }
+
+.comune {
+  background: rgba(255,255,255,.05);
+  border: 1px solid rgba(255,255,255,.12);
+  padding: 20px 22px 22px;
+  margin-bottom: 16px;
+}
+.comune .testata { display: flex; align-items: baseline; gap: 10px; margin-bottom: 16px; }
+.comune h2 { font-size: 24px; margin: 0; font-weight: 700; }
+.comune .provincia { color: rgba(255,255,255,.5); font-size: 14px; }
+.comune .conteggio {
+  margin-left: auto; color: rgba(255,255,255,.6);
+  font-size: 14px; font-variant-numeric: tabular-nums;
+}
+
+.scenari { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+.scenario-scelta {
+  display: block; text-decoration: none; color: inherit;
+  background: rgba(255,255,255,.06);
+  border: 1px solid rgba(255,255,255,.14);
+  padding: 14px 16px;
+  transition: background .12s, border-color .12s;
+}
+.scenario-scelta:hover { background: var(--indaco); border-color: var(--indaco); }
+.scenario-scelta:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.scenario-scelta .nome { display: block; font-weight: 600; font-size: 16px; margin-bottom: 3px; }
+.scenario-scelta .dettaglio { display: block; font-size: 13px; color: rgba(255,255,255,.7); margin-bottom: 8px; }
+.scenario-scelta .esiti {
+  display: block; font-size: 12.5px; color: rgba(255,255,255,.55);
+  font-variant-numeric: tabular-nums;
+}
+
+#ingresso footer {
+  margin-top: 40px; padding-top: 18px;
+  border-top: 1px solid rgba(255,255,255,.12);
+  color: rgba(255,255,255,.45); font-size: 13px;
+}
+
+/* Il marchio ora è un collegamento */
+a.marchio { text-decoration: none; color: inherit; display: block; font-size: 14px; }
+a.marchio:hover { color: #fff; }
+
+@media (max-width: 620px) {
+  #ingresso { padding: 40px 0 32px; }
+  #ingresso h1 { font-size: 28px; }
+  .scenari { grid-template-columns: 1fr; }
+}

@@ -1,6 +1,9 @@
 """
 Server dell'applicazione: espone i dati del database tramite API.
 Avvio:  uvicorn app.main:app --reload
+
+Gli indirizzi sono organizzati per comune, in modo che l'applicazione
+possa servire più comuni senza modifiche al codice.
 """
 
 import os
@@ -28,7 +31,7 @@ DB = {
 app = FastAPI(
     title="API Comunità Energetiche Rinnovabili",
     description="Consultazione degli output del modello RECMOP",
-    version="0.1.0",
+    version="0.2.0",
 )
 
 # Permette al browser di interrogare il server durante lo sviluppo
@@ -57,26 +60,54 @@ def stato():
     return {"stato": "attivo", "postgis": righe[0]["postgis"]}
 
 
-@app.get("/api/scenari")
-def scenari():
-    """Elenco degli scenari disponibili."""
-    return interroga(
+@app.get("/api/comuni")
+def comuni():
+    """
+    Comuni disponibili, con i loro scenari e il centro della mappa.
+    È la richiesta che alimenta la pagina iniziale.
+    """
+    elenco = interroga(
         """
-        SELECT s.codice, s.nome, s.comune,
-               COUNT(*) FILTER (WHERE c.esito = 'riuscita') AS cer_riuscite,
-               COUNT(*) FILTER (WHERE c.esito = 'fallita')  AS cer_fallite
-        FROM scenario s
-        LEFT JOIN cer c ON c.scenario_id = s.id
-        GROUP BY s.id, s.codice, s.nome, s.comune
-        ORDER BY s.codice
+        SELECT c.codice, c.nome, c.provincia,
+               COUNT(DISTINCT e.id) AS edifici,
+               ST_Y(ST_Centroid(ST_Extent(e.geom)::geometry)) AS lat,
+               ST_X(ST_Centroid(ST_Extent(e.geom)::geometry)) AS lon
+        FROM comune c
+        LEFT JOIN edificio e ON e.comune_id = c.id
+        GROUP BY c.id, c.codice, c.nome, c.provincia
+        ORDER BY c.nome
         """
     )
 
+    for comune in elenco:
+        comune["scenari"] = interroga(
+            """
+            SELECT s.codice, s.nome,
+                   COUNT(*) FILTER (WHERE cr.esito = 'riuscita') AS cer_riuscite,
+                   COUNT(*) FILTER (WHERE cr.esito = 'fallita')  AS cer_fallite
+            FROM scenario s
+            JOIN comune c ON c.id = s.comune_id
+            LEFT JOIN cer cr ON cr.scenario_id = s.id
+            WHERE c.codice = %s
+            GROUP BY s.id, s.codice, s.nome
+            ORDER BY s.codice
+            """,
+            (comune["codice"],),
+        )
 
-@app.get("/api/kpi/{scenario}")
-def kpi(scenario: str):
-    """Indicatori d'insieme del territorio per uno scenario."""
-    righe = interroga("SELECT id FROM scenario WHERE codice = %s", (scenario,))
+    return elenco
+
+
+@app.get("/api/{comune}/kpi/{scenario}")
+def kpi(comune: str, scenario: str):
+    """Indicatori d'insieme del territorio per un comune e uno scenario."""
+    righe = interroga(
+        """
+        SELECT s.id FROM scenario s JOIN comune c ON c.id = s.comune_id
+        WHERE c.codice = %s AND s.codice = %s
+        """,
+        (comune, scenario),
+    )
     if not righe:
         raise HTTPException(status_code=404, detail="Scenario non trovato")
     scenario_id = righe[0]["id"]
@@ -84,11 +115,12 @@ def kpi(scenario: str):
     edifici = interroga(
         """
         SELECT COUNT(*) AS totale,
-               COUNT(*) FILTER (WHERE ruolo = 'PEB') AS peb,
-               COUNT(*) FILTER (WHERE ruolo = 'NEB') AS neb
-        FROM edificio WHERE comune = %s
+               COUNT(*) FILTER (WHERE e.ruolo = 'PEB') AS peb,
+               COUNT(*) FILTER (WHERE e.ruolo = 'NEB') AS neb
+        FROM edificio e JOIN comune c ON c.id = e.comune_id
+        WHERE c.codice = %s
         """,
-        ("Avellino",),
+        (comune,),
     )[0]
 
     comunita = interroga(
@@ -103,8 +135,7 @@ def kpi(scenario: str):
     coinvolti = interroga(
         """
         SELECT COUNT(DISTINCT m.edificio_id) AS edifici_in_cer
-        FROM cer_membro m
-        JOIN cer c ON c.id = m.cer_id
+        FROM cer_membro m JOIN cer c ON c.id = m.cer_id
         WHERE c.scenario_id = %s AND c.esito = 'riuscita'
         """,
         (scenario_id,),
@@ -115,76 +146,66 @@ def kpi(scenario: str):
     ) if edifici["totale"] else 0
 
     return {
-        "scenario": scenario,
-        **edifici,
-        **comunita,
-        **coinvolti,
+        "comune": comune, "scenario": scenario,
+        **edifici, **comunita, **coinvolti,
         "copertura_percentuale": copertura,
     }
 
-@app.get("/api/edifici")
-def edifici():
-    """
-    Tutti gli edifici in formato GeoJSON, pronti per la mappa.
-    La geometria è convertita da PostGIS con ST_AsGeoJSON.
-    """
+
+@app.get("/api/{comune}/edifici")
+def edifici(comune: str):
+    """Edifici di un comune in formato GeoJSON, pronti per la mappa."""
     righe = interroga(
         """
-        SELECT id_edificio, classe_energetica, domanda_annua, produzione_annua,
-               num_pannelli, potenza_picco, ruolo,
-               ST_AsGeoJSON(geom)::json AS geometria
-        FROM edificio
-        WHERE comune = %s
+        SELECT e.id_edificio, e.classe_energetica, e.domanda_annua, e.produzione_annua,
+               e.num_pannelli, e.potenza_picco, e.ruolo,
+               ST_AsGeoJSON(e.geom)::json AS geometria
+        FROM edificio e JOIN comune c ON c.id = e.comune_id
+        WHERE c.codice = %s
         """,
-        ("Avellino",),
+        (comune,),
     )
-
     return {
         "type": "FeatureCollection",
         "features": [
-            {
-                "type": "Feature",
-                "geometry": r.pop("geometria"),
-                "properties": r,
-            }
+            {"type": "Feature", "geometry": r.pop("geometria"), "properties": r}
             for r in righe
         ],
     }
 
 
-@app.get("/api/cer/{scenario}")
-def elenco_cer(scenario: str, esito: str = "riuscita"):
-    """Elenco delle comunità di uno scenario (riuscite o fallite)."""
+@app.get("/api/{comune}/cer/{scenario}")
+def elenco_cer(comune: str, scenario: str, esito: str = "riuscita"):
+    """Elenco delle comunità di uno scenario."""
     return interroga(
         """
-        SELECT c.codice, c.esito, c.n_membri, c.iterazione, c.indice,
-               c.domanda_annua, c.autoconsumo_fisico,
-               c.autoconsumo_diffuso, c.eccedenza
-        FROM cer c
-        JOIN scenario s ON s.id = c.scenario_id
-        WHERE s.codice = %s AND c.esito = %s
-        ORDER BY c.autoconsumo_diffuso DESC NULLS LAST
+        SELECT cr.codice, cr.esito, cr.n_membri, cr.iterazione, cr.indice,
+               cr.domanda_annua, cr.autoconsumo_fisico,
+               cr.autoconsumo_diffuso, cr.eccedenza
+        FROM cer cr
+        JOIN scenario s ON s.id = cr.scenario_id
+        JOIN comune c ON c.id = s.comune_id
+        WHERE c.codice = %s AND s.codice = %s AND cr.esito = %s
+        ORDER BY cr.autoconsumo_diffuso DESC NULLS LAST
         """,
-        (scenario, esito),
+        (comune, scenario, esito),
     )
 
 
-@app.get("/api/cer/{scenario}/{codice}")
-def dettaglio_cer(scenario: str, codice: str):
-    """
-    Dettaglio di una comunità: attributi, membri con il loro ruolo
-    e andamento mensile dell'autoconsumo.
-    """
+@app.get("/api/{comune}/cer/{scenario}/{codice}")
+def dettaglio_cer(comune: str, scenario: str, codice: str):
+    """Dettaglio di una comunità: attributi, membri e andamento mensile."""
     righe = interroga(
         """
-        SELECT c.id, c.codice, c.esito, c.n_membri, c.iterazione, c.indice,
-               c.domanda_annua, c.autoconsumo_fisico,
-               c.autoconsumo_diffuso, c.eccedenza
-        FROM cer c
-        JOIN scenario s ON s.id = c.scenario_id
-        WHERE s.codice = %s AND c.codice = %s
+        SELECT cr.id, cr.codice, cr.esito, cr.n_membri, cr.iterazione, cr.indice,
+               cr.domanda_annua, cr.autoconsumo_fisico,
+               cr.autoconsumo_diffuso, cr.eccedenza
+        FROM cer cr
+        JOIN scenario s ON s.id = cr.scenario_id
+        JOIN comune c ON c.id = s.comune_id
+        WHERE c.codice = %s AND s.codice = %s AND cr.codice = %s
         """,
-        (scenario, codice),
+        (comune, scenario, codice),
     )
     if not righe:
         raise HTTPException(status_code=404, detail="Comunità non trovata")
@@ -196,10 +217,8 @@ def dettaglio_cer(scenario: str, codice: str):
         """
         SELECT e.id_edificio, e.ruolo, e.classe_energetica,
                e.domanda_annua, e.produzione_annua, e.potenza_picco
-        FROM cer_membro m
-        JOIN edificio e ON e.id = m.edificio_id
-        WHERE m.cer_id = %s
-        ORDER BY e.ruolo, e.id_edificio
+        FROM cer_membro m JOIN edificio e ON e.id = m.edificio_id
+        WHERE m.cer_id = %s ORDER BY e.ruolo, e.id_edificio
         """,
         (cer_id,),
     )
@@ -216,57 +235,96 @@ def dettaglio_cer(scenario: str, codice: str):
     produzione = sum(m["produzione_annua"] or 0 for m in membri)
     comunita["co2_evitata_kg"] = round(produzione * 0.268 / 1000, 2)
 
-@app.get("/api/edificio-vicino")
-def edificio_vicino(lat: float, lon: float):
-    """
-    Edificio più vicino a un punto geografico.
-    Usa l'indice spaziale di PostGIS: la ricerca è immediata.
-    """
+    return {"comunita": comunita, "membri": membri, "mensili": mensili}
+
+
+@app.get("/api/{comune}/edificio/{id_edificio}/cer/{scenario}")
+def cer_di_edificio(comune: str, id_edificio: int, scenario: str):
+    """La comunità a cui appartiene un edificio in un dato scenario."""
+    edificio = interroga(
+        """
+        SELECT e.id_edificio, e.ruolo, e.classe_energetica,
+               e.domanda_annua, e.produzione_annua, e.num_pannelli, e.potenza_picco
+        FROM edificio e JOIN comune c ON c.id = e.comune_id
+        WHERE c.codice = %s AND e.id_edificio = %s
+        """,
+        (comune, id_edificio),
+    )
+    if not edificio:
+        raise HTTPException(status_code=404, detail="Edificio non trovato")
+
+    appartenenza = interroga(
+        """
+        SELECT cr.codice
+        FROM cer_membro m
+        JOIN cer cr ON cr.id = m.cer_id
+        JOIN scenario s ON s.id = cr.scenario_id
+        JOIN comune c ON c.id = s.comune_id
+        JOIN edificio e ON e.id = m.edificio_id
+        WHERE c.codice = %s AND e.id_edificio = %s
+          AND s.codice = %s AND cr.esito = 'riuscita'
+        """,
+        (comune, id_edificio, scenario),
+    )
+
+    risultato = {"edificio": edificio[0], "in_comunita": bool(appartenenza)}
+    if appartenenza:
+        risultato["comunita"] = dettaglio_cer(comune, scenario, appartenenza[0]["codice"])
+    return risultato
+
+
+@app.get("/api/{comune}/edificio-vicino")
+def edificio_vicino(comune: str, lat: float, lon: float):
+    """Edificio più vicino a un punto: usa l'indice spaziale di PostGIS."""
     righe = interroga(
         """
-        SELECT id_edificio, ruolo,
-               ST_Distance(geom::geography, ST_SetSRID(ST_Point(%s, %s), 4326)::geography) AS distanza_m
-        FROM edificio
-        WHERE comune = %s
-        ORDER BY geom <-> ST_SetSRID(ST_Point(%s, %s), 4326)
+        SELECT e.id_edificio, e.ruolo,
+               ST_Distance(e.geom::geography, ST_SetSRID(ST_Point(%s, %s), 4326)::geography) AS distanza_m
+        FROM edificio e JOIN comune c ON c.id = e.comune_id
+        WHERE c.codice = %s
+        ORDER BY e.geom <-> ST_SetSRID(ST_Point(%s, %s), 4326)
         LIMIT 1
         """,
-        (lon, lat, "Avellino", lon, lat),
+        (lon, lat, comune, lon, lat),
     )
     return righe[0] if righe else {"id_edificio": None}
 
-@app.get("/api/distribuzioni/{scenario}")
-def distribuzioni(scenario: str):
-    """Distribuzioni utili ai grafici della vista territorio."""
+
+@app.get("/api/{comune}/distribuzioni/{scenario}")
+def distribuzioni(comune: str, scenario: str):
+    """Distribuzioni per i grafici della vista territorio."""
     per_dimensione = interroga(
         """
-        SELECT c.n_membri AS dimensione, COUNT(*) AS numero
-        FROM cer c JOIN scenario s ON s.id = c.scenario_id
-        WHERE s.codice = %s AND c.esito = 'riuscita'
-        GROUP BY c.n_membri ORDER BY c.n_membri
+        SELECT cr.n_membri AS dimensione, COUNT(*) AS numero
+        FROM cer cr JOIN scenario s ON s.id = cr.scenario_id
+        JOIN comune c ON c.id = s.comune_id
+        WHERE c.codice = %s AND s.codice = %s AND cr.esito = 'riuscita'
+        GROUP BY cr.n_membri ORDER BY cr.n_membri
         """,
-        (scenario,),
+        (comune, scenario),
     )
 
     per_iterazione = interroga(
         """
-        SELECT c.iterazione,
-               COUNT(*) FILTER (WHERE c.esito = 'riuscita') AS riuscite,
-               COUNT(*) FILTER (WHERE c.esito = 'fallita')  AS fallite
-        FROM cer c JOIN scenario s ON s.id = c.scenario_id
-        WHERE s.codice = %s AND c.iterazione IS NOT NULL
-        GROUP BY c.iterazione ORDER BY c.iterazione
+        SELECT cr.iterazione,
+               COUNT(*) FILTER (WHERE cr.esito = 'riuscita') AS riuscite,
+               COUNT(*) FILTER (WHERE cr.esito = 'fallita')  AS fallite
+        FROM cer cr JOIN scenario s ON s.id = cr.scenario_id
+        JOIN comune c ON c.id = s.comune_id
+        WHERE c.codice = %s AND s.codice = %s AND cr.iterazione IS NOT NULL
+        GROUP BY cr.iterazione ORDER BY cr.iterazione
         """,
-        (scenario,),
+        (comune, scenario),
     )
 
     per_classe = interroga(
         """
-        SELECT classe_energetica AS classe, COUNT(*) AS numero
-        FROM edificio WHERE comune = %s
-        GROUP BY classe_energetica ORDER BY classe_energetica
+        SELECT e.classe_energetica AS classe, COUNT(*) AS numero
+        FROM edificio e JOIN comune c ON c.id = e.comune_id
+        WHERE c.codice = %s
+        GROUP BY e.classe_energetica ORDER BY e.classe_energetica
         """,
-        ("Avellino",),
+        (comune,),
     )
 
     return {
@@ -276,17 +334,21 @@ def distribuzioni(scenario: str):
     }
 
 
-@app.get("/api/confronto")
-def confronto():
+@app.get("/api/{comune}/confronto")
+def confronto(comune: str):
     """Indicatori dei due scenari affiancati."""
     return interroga(
         """
         SELECT s.codice AS scenario,
-               COUNT(*) FILTER (WHERE c.esito = 'riuscita') AS riuscite,
-               COUNT(*) FILTER (WHERE c.esito = 'fallita')  AS fallite,
-               ROUND(AVG(c.n_membri) FILTER (WHERE c.esito = 'riuscita'), 1) AS membri_medi,
-               ROUND(SUM(c.autoconsumo_diffuso) FILTER (WHERE c.esito = 'riuscita')::numeric) AS energia_condivisa
-        FROM scenario s LEFT JOIN cer c ON c.scenario_id = s.id
+               COUNT(*) FILTER (WHERE cr.esito = 'riuscita') AS riuscite,
+               COUNT(*) FILTER (WHERE cr.esito = 'fallita')  AS fallite,
+               ROUND(AVG(cr.n_membri) FILTER (WHERE cr.esito = 'riuscita'), 1) AS membri_medi,
+               ROUND(SUM(cr.autoconsumo_diffuso) FILTER (WHERE cr.esito = 'riuscita')::numeric) AS energia_condivisa
+        FROM scenario s
+        JOIN comune c ON c.id = s.comune_id
+        LEFT JOIN cer cr ON cr.scenario_id = s.id
+        WHERE c.codice = %s
         GROUP BY s.codice ORDER BY s.codice
-        """
+        """,
+        (comune,),
     )
