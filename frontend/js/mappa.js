@@ -1,5 +1,5 @@
 /**
- * Gestione della mappa: inizializzazione, livelli, stili.
+ * Gestione della mappa: inizializzazione, livelli, stili e flusso di energia.
  * Il resto dell'applicazione non conosce i dettagli di Leaflet.
  */
 
@@ -14,6 +14,8 @@ const STILI = {
 let mappa;
 let stratoEdifici;
 const edificiPerId = {};
+const disegni = [];   // linee e frecce disegnate sulla mappa
+
 
 export function creaMappa(centro) {
   mappa = L.map("mappa").setView(centro, ZOOM);
@@ -26,6 +28,7 @@ export function creaMappa(centro) {
   aggiungiLegenda();
   return mappa;
 }
+
 
 export function disegnaEdifici(geojson, alClick) {
   stratoEdifici = L.geoJSON(geojson, {
@@ -40,16 +43,22 @@ export function disegnaEdifici(geojson, alClick) {
   return stratoEdifici;
 }
 
+
 export function evidenziaComunita(idSelezionato, membri) {
-  // Riporto tutti gli edifici allo stile normale
-  stratoEdifici.setStyle(STILI.normale);
+  pulisci();
 
   const daInquadrare = [];
+  const produttori = [];
+  const consumatori = [];
+
+  // Coloro ogni membro secondo il ruolo energetico
   for (const m of membri) {
     const livello = edificiPerId[m.id_edificio];
     if (!livello) continue;
+
     livello.setStyle(m.ruolo === "PEB" ? STILI.peb : STILI.neb);
     daInquadrare.push(livello);
+    (m.ruolo === "PEB" ? produttori : consumatori).push(livello);
   }
 
   // L'edificio selezionato ha un bordo scuro per distinguerlo
@@ -59,24 +68,75 @@ export function evidenziaComunita(idSelezionato, membri) {
     if (!daInquadrare.includes(selezionato)) daInquadrare.push(selezionato);
   }
 
+  disegnaFlusso(produttori, consumatori);
+
   if (daInquadrare.length) {
     const gruppo = L.featureGroup(daInquadrare);
     mappa.fitBounds(gruppo.getBounds(), { padding: [60, 60], maxZoom: 17 });
   }
 }
 
-export function pulisci() {
-  if (stratoEdifici) stratoEdifici.setStyle(STILI.normale);
+
+/**
+ * Disegna il flusso di energia: una linea orientata da ogni produttore
+ * verso ogni consumatore della comunità. Le linee sono sottili e poco
+ * marcate perché in comunità numerose il loro numero cresce rapidamente.
+ */
+function disegnaFlusso(produttori, consumatori) {
+  if (!produttori.length || !consumatori.length) return;
+
+  const linee = [];
+
+  for (const p of produttori) {
+    const partenza = p.getBounds().getCenter();
+    for (const c of consumatori) {
+      const arrivo = c.getBounds().getCenter();
+      const linea = L.polyline([partenza, arrivo], {
+        color: "#1c2230",
+        weight: 1,
+        opacity: 0.45,
+        interactive: false,
+      }).addTo(mappa);
+      disegni.push(linea);
+      linee.push(linea);
+    }
+  }
+
+  // Le punte si disegnano dopo, così restano allineate anche dopo lo zoom
+  setTimeout(() => {
+    for (const linea of linee) {
+      const freccia = L.polylineDecorator(linea, {
+        patterns: [{
+          offset: "100%",
+          repeat: 0,
+          symbol: L.Symbol.arrowHead({
+            pixelSize: 7,
+            polygon: false,
+            pathOptions: { color: "#1c2230", weight: 1, opacity: 0.6 },
+          }),
+        }],
+      }).addTo(mappa);
+      disegni.push(freccia);
+    }
+  }, 300);
 }
 
+
+export function pulisci() {
+  if (stratoEdifici) stratoEdifici.setStyle(STILI.normale);
+  while (disegni.length) mappa.removeLayer(disegni.pop());
+}
+
+
 function aggiungiLegenda() {
-  const legenda = L.control({ position: "bottomleft" });
+  const legenda = L.control({ position: "bottomright" });
   legenda.onAdd = () => {
     const div = L.DomUtil.create("div", "legenda");
     div.innerHTML = `
-      <div class="voce"><span class="quadretto" style="background:#3b82f6"></span> Edificio</div>
-      <div class="voce"><span class="quadretto" style="background:#16a34a"></span> PEB · produce energia</div>
-      <div class="voce"><span class="quadretto" style="background:#dc2626"></span> NEB · consuma energia</div>`;
+      <div class="voce-legenda"><span class="campione" style="background:#3b82f6"></span> Edificio</div>
+      <div class="voce-legenda"><span class="campione" style="background:#16a34a"></span> PEB · produce energia</div>
+      <div class="voce-legenda"><span class="campione" style="background:#dc2626"></span> NEB · consuma energia</div>
+      <div class="voce-legenda"><span class="filetto"></span> Flusso di energia</div>`;
     return div;
   };
   legenda.addTo(mappa);
