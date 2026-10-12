@@ -585,3 +585,22 @@ a.marchio:hover { color: #fff; }
   width: 13px; height: 0; flex: 0 0 13px;
   border-top: 1px solid var(--grafite);
 }
+
+/* --- Spiegazione in linguaggio semplice --- */
+
+.racconto {
+  background: var(--nebbia);
+  border-left: 3px solid var(--indaco);
+  padding: 13px 15px;
+  margin: 18px 0 4px;
+  font-size: 14.5px;
+  line-height: 1.55;
+}
+.racconto p { margin: 0 0 9px; }
+.racconto p:last-child { margin-bottom: 0; }
+
+.membro:hover {
+  border-color: var(--indaco);
+  background: #eef0fd;
+  box-shadow: 0 0 0 2px rgba(79,93,216,.2);
+}

@@ -3,9 +3,10 @@
  * carica i dati e gestisce le interazioni.
  */
 
-import { creaMappa, disegnaEdifici, evidenziaComunita, pulisci } from "./mappa.js";
+
 import { graficoMensile, pulisciGrafici } from "./grafici.js";
 import { contenutoTerritorio, graficiTerritorio } from "./viste/territorio.js";
+import { creaMappa, disegnaEdifici, evidenziaComunita, pulisci, indicaEdificio, evidenziaSingolo } from "./mappa.js";
 
 const API = "http://127.0.0.1:8000/api";
 
@@ -169,14 +170,45 @@ async function apriEdificio(idEdificio) {
         Il modello forma una comunità solo quando l'aggregazione supera la soglia di efficienza.
       </p>`;
     mostraScheda(html);
-    pulisci();
+    evidenziaSingolo(idEdificio);
     return;
   }
 
-  const c = dati.comunita.comunita;
+   const c = dati.comunita.comunita;
   const membri = dati.comunita.membri;
 
+  // Spiego in parole semplici il ruolo dell'edificio nella comunità
+  const altri = membri.filter(m => m.id_edificio !== e.id_edificio);
+  const produttori = altri.filter(m => m.ruolo === "PEB").length;
+  const consumatori = altri.filter(m => m.ruolo === "NEB").length;
+  const quanti = (n, singolare, plurale) => `${n} ${n === 1 ? singolare : plurale}`;
+
+     const racconto = e.ruolo === "PEB"
+    ? `<p>
+         Questo edificio fa parte di un gruppo di <b>${membri.length} edifici</b> che
+         condividono energia: ${quanti(produttori + 1, "edificio produce", "edifici producono")}
+         più di quanto consumi, e ${quanti(consumatori, "edificio riceve", "edifici ricevono")}
+         l'energia che avanza.
+       </p>
+       <p>
+         Il tuo edificio è <b>tra quelli che producono</b>: grazie ai pannelli genera
+         più energia del necessario, e l'eccedenza va agli edifici in rosso invece
+         di essere immessa nella rete nazionale.
+       </p>`
+    : `<p>
+         Questo edificio fa parte di un gruppo di <b>${membri.length} edifici</b> che
+         condividono energia: ${quanti(produttori, "edificio produce", "edifici producono")}
+         più di quanto consumi, e ${quanti(consumatori + 1, "edificio riceve", "edifici ricevono")}
+         l'energia che avanza.
+       </p>
+       <p>
+         Il tuo edificio è <b>tra quelli che ricevono</b>: non avendo pannelli,
+         copre parte del proprio fabbisogno con l'energia prodotta dagli edifici
+         in verde, invece di prelevarla tutta dalla rete nazionale.
+       </p>`;
+
   html += `
+    <div class="racconto">${racconto}</div>
     <p class="titoletto">La sua comunità energetica</p>
     <div class="dati" style="border-top:0; padding-top:0;">
       <div class="dato"><span class="nome">Edifici</span>
@@ -212,8 +244,11 @@ async function apriEdificio(idEdificio) {
   }
   evidenziaComunita(idEdificio, membri);
 
-  contenuto.querySelectorAll(".membro").forEach(el => {
-    el.onclick = () => apriEdificio(Number(el.dataset.id));
+    contenuto.querySelectorAll(".membro").forEach(el => {
+    const id = Number(el.dataset.id);
+    el.onclick = () => apriEdificio(id);
+    el.onmouseenter = () => indicaEdificio(id, true);
+    el.onmouseleave = () => indicaEdificio(id, false);
   });
 }
 

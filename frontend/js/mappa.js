@@ -7,8 +7,8 @@ const ZOOM = 14;
 
 const STILI = {
   normale: { color: "#2563eb", weight: 1, fillColor: "#3b82f6", fillOpacity: 0.35 },
-  peb:     { color: "#15803d", weight: 1.5, fillColor: "#16a34a", fillOpacity: 0.85 },
-  neb:     { color: "#b91c1c", weight: 1.5, fillColor: "#dc2626", fillOpacity: 0.85 },
+  peb:     { color: "#0b4f22", weight: 2.5, fillColor: "#16a34a", fillOpacity: 0.85 },
+  neb:     { color: "#7a1010", weight: 2.5, fillColor: "#dc2626", fillOpacity: 0.85 },
 };
 
 let mappa;
@@ -140,4 +140,38 @@ function aggiungiLegenda() {
     return div;
   };
   legenda.addTo(mappa);
+}
+
+/**
+ * Mette temporaneamente in risalto un edificio, per identificarlo
+ * quando due membri della comunità sono vicini o sovrapposti.
+ */
+export function indicaEdificio(idEdificio, attivo) {
+  const livello = edificiPerId[idEdificio];
+  if (!livello) return;
+
+  if (attivo) {
+    livello.setStyle({ color: "#4f5dd8", weight: 4 });
+    livello.bringToFront();
+  } else {
+    // Ripristino il bordo del ruolo: il riempimento resta quello impostato
+    const colore = livello.options.fillColor === "#16a34a" ? "#0b4f22" : "#7a1010";
+    livello.setStyle({ color: colore, weight: 2.5 });
+  }
+}
+
+/**
+ * Evidenzia un singolo edificio, senza comunità:
+ * serve quando l'edificio selezionato non appartiene ad alcun gruppo.
+ */
+export function evidenziaSingolo(idEdificio) {
+  pulisci();
+
+  const livello = edificiPerId[idEdificio];
+  if (!livello) return;
+
+  livello.setStyle({ color: "#111", weight: 3, fillColor: "#9aa1ad", fillOpacity: 0.85 });
+  livello.bringToFront();
+
+  mappa.setView(livello.getBounds().getCenter(), 17);
 }
