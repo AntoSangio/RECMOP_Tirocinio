@@ -153,18 +153,44 @@ def kpi(comune: str, scenario: str):
 
 
 @app.get("/api/{comune}/edifici")
-def edifici(comune: str):
-    """Edifici di un comune in formato GeoJSON, pronti per la mappa."""
-    righe = interroga(
-        """
-        SELECT e.id_edificio, e.classe_energetica, e.domanda_annua, e.produzione_annua,
-               e.num_pannelli, e.potenza_picco, e.ruolo,
-               ST_AsGeoJSON(e.geom)::json AS geometria
-        FROM edificio e JOIN comune c ON c.id = e.comune_id
-        WHERE c.codice = %s
-        """,
-        (comune,),
-    )
+def edifici(comune: str, scenario: str = None):
+    """
+    Edifici di un comune in formato GeoJSON, pronti per la mappa.
+    Se si indica uno scenario, ogni edificio riporta anche se rientra
+    in una comunità riuscita o in un'aggregazione non riuscita.
+    """
+    if scenario:
+        righe = interroga(
+            """
+            SELECT e.id_edificio, e.classe_energetica, e.domanda_annua, e.produzione_annua,
+                   e.num_pannelli, e.potenza_picco, e.ruolo,
+                   BOOL_OR(cr.esito = 'riuscita') AS in_riuscita,
+                   BOOL_OR(cr.esito = 'fallita')  AS in_fallita,
+                   ST_AsGeoJSON(e.geom)::json AS geometria
+            FROM edificio e
+            JOIN comune c ON c.id = e.comune_id
+            LEFT JOIN cer_membro m ON m.edificio_id = e.id
+            LEFT JOIN cer cr ON cr.id = m.cer_id
+            LEFT JOIN scenario s ON s.id = cr.scenario_id AND s.codice = %s
+            WHERE c.codice = %s AND (cr.id IS NULL OR s.id IS NOT NULL)
+            GROUP BY e.id, e.id_edificio, e.classe_energetica, e.domanda_annua,
+                     e.produzione_annua, e.num_pannelli, e.potenza_picco, e.ruolo, e.geom
+            """,
+            (scenario, comune),
+        )
+    else:
+        righe = interroga(
+            """
+            SELECT e.id_edificio, e.classe_energetica, e.domanda_annua, e.produzione_annua,
+                   e.num_pannelli, e.potenza_picco, e.ruolo,
+                   NULL::boolean AS in_riuscita, NULL::boolean AS in_fallita,
+                   ST_AsGeoJSON(e.geom)::json AS geometria
+            FROM edificio e JOIN comune c ON c.id = e.comune_id
+            WHERE c.codice = %s
+            """,
+            (comune,),
+        )
+
     return {
         "type": "FeatureCollection",
         "features": [

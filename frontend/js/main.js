@@ -3,10 +3,12 @@
  * carica i dati e gestisce le interazioni.
  */
 
-
+import {
+  creaMappa, disegnaEdifici, evidenziaComunita, evidenziaSingolo,
+  indicaEdificio, pulisci, cambiaSfondo, applicaFiltri,
+} from "./mappa.js";
 import { graficoMensile, pulisciGrafici } from "./grafici.js";
 import { contenutoTerritorio, graficiTerritorio } from "./viste/territorio.js";
-import { creaMappa, disegnaEdifici, evidenziaComunita, pulisci, indicaEdificio, evidenziaSingolo } from "./mappa.js";
 
 const API = "http://127.0.0.1:8000/api";
 
@@ -36,7 +38,6 @@ function dimmi(testo) {
 // --- Avvio ---
 
 async function avvia() {
-  // Dati del comune: nome e centro della mappa
   const comuni = await fetch(`${API}/comuni`).then(r => r.json());
   const datiComune = comuni.find(c => c.codice === comune);
 
@@ -49,11 +50,17 @@ async function avvia() {
   creaMappa([datiComune.lat, datiComune.lon]);
   costruisciSceltaScenario(datiComune.scenari);
 
+  await caricaEdifici(datiComune.nome);
+  pannelloRicerca(datiComune.nome);
+}
+
+async function caricaEdifici(nomeComune) {
   try {
-    const geojson = await fetch(`${API}/${comune}/edifici`).then(r => r.json());
+    const geojson = await fetch(`${API}/${comune}/edifici?scenario=${scenario}`)
+      .then(r => r.json());
     disegnaEdifici(geojson, apriEdificio);
-    dimmi(`${datiComune.nome}: ${numero(geojson.features.length)} edifici`);
-    pannelloRicerca(datiComune.nome);
+    applicaFiltri(leggiFiltri());
+    dimmi(`${nomeComune}: ${numero(geojson.features.length)} edifici`);
   } catch (errore) {
     dimmi("Server non raggiungibile. Avvia il backend e ricarica la pagina.");
     console.error(errore);
@@ -174,7 +181,7 @@ async function apriEdificio(idEdificio) {
     return;
   }
 
-   const c = dati.comunita.comunita;
+  const c = dati.comunita.comunita;
   const membri = dati.comunita.membri;
 
   // Spiego in parole semplici il ruolo dell'edificio nella comunità
@@ -183,7 +190,7 @@ async function apriEdificio(idEdificio) {
   const consumatori = altri.filter(m => m.ruolo === "NEB").length;
   const quanti = (n, singolare, plurale) => `${n} ${n === 1 ? singolare : plurale}`;
 
-     const racconto = e.ruolo === "PEB"
+  const racconto = e.ruolo === "PEB"
     ? `<p>
          Questo edificio fa parte di un gruppo di <b>${membri.length} edifici</b> che
          condividono energia: ${quanti(produttori + 1, "edificio produce", "edifici producono")}
@@ -209,6 +216,7 @@ async function apriEdificio(idEdificio) {
 
   html += `
     <div class="racconto">${racconto}</div>
+
     <p class="titoletto">La sua comunità energetica</p>
     <div class="dati" style="border-top:0; padding-top:0;">
       <div class="dato"><span class="nome">Edifici</span>
@@ -221,7 +229,7 @@ async function apriEdificio(idEdificio) {
         <span class="valore">${numero(c.co2_evitata_kg)} kg CO₂</span></div>
     </div>
 
-        <p class="titoletto">Energia nel corso dell'anno</p>
+    <p class="titoletto">Energia nel corso dell'anno</p>
     <div class="grafico"><canvas id="mensile"></canvas></div>
     <p class="didascalia">
       Quanta energia prodotta viene consumata sul posto e quanta viene condivisa
@@ -235,16 +243,21 @@ async function apriEdificio(idEdificio) {
           ${m.id_edificio}
         </span>`).join("")}
     </div>
-    <p class="aiuto">Verde: produce energia. Rosso: la consuma.</p>`;
+    <p class="aiuto">
+      Passa il cursore su un numero per individuarlo sulla mappa, o cliccalo per aprirlo.
+      Verde: produce energia. Rosso: la consuma.
+    </p>`;
 
   mostraScheda(html);
-    const mensili = dati.comunita.mensili;
+
+  const mensili = dati.comunita.mensili;
   if (mensili?.length) {
     graficoMensile(document.getElementById("mensile"), mensili);
   }
+
   evidenziaComunita(idEdificio, membri);
 
-    contenuto.querySelectorAll(".membro").forEach(el => {
+  contenuto.querySelectorAll(".membro").forEach(el => {
     const id = Number(el.dataset.id);
     el.onclick = () => apriEdificio(id);
     el.onmouseenter = () => indicaEdificio(id, true);
@@ -309,5 +322,32 @@ document.getElementById("chiudi").onclick = () => {
   scheda.hidden = true;
   pulisci();
 };
+
+// --- Controllo dei livelli ---
+
+const apriLivelli = document.getElementById("apri-livelli");
+const pannelloLivelli = document.getElementById("pannello-livelli");
+
+apriLivelli.onclick = () => {
+  const aperto = !pannelloLivelli.hidden;
+  pannelloLivelli.hidden = aperto;
+  apriLivelli.setAttribute("aria-expanded", String(!aperto));
+};
+
+function leggiFiltri() {
+  const filtri = {};
+  pannelloLivelli.querySelectorAll("[data-filtro]").forEach(casella => {
+    filtri[casella.dataset.filtro] = casella.checked;
+  });
+  return filtri;
+}
+
+pannelloLivelli.querySelectorAll("[data-filtro]").forEach(casella => {
+  casella.onchange = () => applicaFiltri(leggiFiltri());
+});
+
+pannelloLivelli.querySelectorAll('input[name="sfondo"]').forEach(scelta => {
+  scelta.onchange = () => cambiaSfondo(scelta.value);
+});
 
 avvia();

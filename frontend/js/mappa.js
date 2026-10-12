@@ -1,5 +1,6 @@
 /**
- * Gestione della mappa: inizializzazione, livelli, stili e flusso di energia.
+ * Gestione della mappa: inizializzazione, sfondi, livelli, stili
+ * e rappresentazione del flusso di energia.
  * Il resto dell'applicazione non conosce i dettagli di Leaflet.
  */
 
@@ -11,22 +12,46 @@ const STILI = {
   neb:     { color: "#7a1010", weight: 2.5, fillColor: "#dc2626", fillOpacity: 0.85 },
 };
 
+const SFONDI = {
+  standard: {
+    url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+    attribution: "© OpenStreetMap",
+  },
+  chiaro: {
+    url: "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
+    attribution: "© OpenStreetMap, © CARTO",
+  },
+  satellite: {
+    url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+    attribution: "© Esri, Maxar, Earthstar Geographics",
+  },
+};
+
 let mappa;
 let stratoEdifici;
+let sfondoAttivo;
 const edificiPerId = {};
-const disegni = [];   // linee e frecce disegnate sulla mappa
+const disegni = [];      // linee e frecce disegnate sulla mappa
+let filtriAttivi = null; // ultimi filtri applicati, per ripristinare la visibilità
 
 
 export function creaMappa(centro) {
   mappa = L.map("mappa").setView(centro, ZOOM);
-
-  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    attribution: "© OpenStreetMap",
-    maxZoom: 19,
-  }).addTo(mappa);
-
+  cambiaSfondo("standard");
   aggiungiLegenda();
   return mappa;
+}
+
+
+/** Cambia la cartografia di sfondo. */
+export function cambiaSfondo(nome) {
+  const scelto = SFONDI[nome] ?? SFONDI.standard;
+  if (sfondoAttivo) mappa.removeLayer(sfondoAttivo);
+  sfondoAttivo = L.tileLayer(scelto.url, {
+    attribution: scelto.attribution,
+    maxZoom: 19,
+  }).addTo(mappa);
+  sfondoAttivo.bringToBack();
 }
 
 
@@ -44,6 +69,37 @@ export function disegnaEdifici(geojson, alClick) {
 }
 
 
+/**
+ * Mostra o nasconde gli edifici secondo i filtri attivi.
+ * Un edificio resta visibile solo se soddisfa sia il filtro sul ruolo
+ * sia quello sulla partecipazione a una comunità.
+ */
+export function applicaFiltri(filtri) {
+  if (!stratoEdifici) return;
+  filtriAttivi = filtri;
+
+  stratoEdifici.eachLayer(livello => {
+    const visibile = edificioVisibile(livello.feature.properties, filtri);
+    livello.setStyle({ opacity: visibile ? 1 : 0, fillOpacity: visibile ? 0.35 : 0 });
+    if (livello._path) livello._path.style.pointerEvents = visibile ? "" : "none";
+  });
+}
+
+
+function edificioVisibile(p, filtri) {
+  if (!filtri) return true;
+
+  const perRuolo = p.ruolo === "PEB" ? filtri.peb : filtri.neb;
+
+  let perPartecipazione;
+  if (p.in_riuscita) perPartecipazione = filtri.riuscita;
+  else if (p.in_fallita) perPartecipazione = filtri.fallita;
+  else perPartecipazione = filtri.esclusi;
+
+  return perRuolo && perPartecipazione;
+}
+
+
 export function evidenziaComunita(idSelezionato, membri) {
   pulisci();
 
@@ -57,6 +113,7 @@ export function evidenziaComunita(idSelezionato, membri) {
     if (!livello) continue;
 
     livello.setStyle(m.ruolo === "PEB" ? STILI.peb : STILI.neb);
+    livello.bringToFront();
     daInquadrare.push(livello);
     (m.ruolo === "PEB" ? produttori : consumatori).push(livello);
   }
@@ -72,7 +129,41 @@ export function evidenziaComunita(idSelezionato, membri) {
 
   if (daInquadrare.length) {
     const gruppo = L.featureGroup(daInquadrare);
-    mappa.fitBounds(gruppo.getBounds(), { padding: [60, 60], maxZoom: 17 });
+    mappa.fitBounds(gruppo.getBounds(), { padding: [60, 60], maxZoom: 18 });
+  }
+}
+
+
+/**
+ * Evidenzia un singolo edificio, senza comunità:
+ * serve quando l'edificio selezionato non appartiene ad alcun gruppo.
+ */
+export function evidenziaSingolo(idEdificio) {
+  pulisci();
+
+  const livello = edificiPerId[idEdificio];
+  if (!livello) return;
+
+  livello.setStyle({ color: "#111", weight: 3, fillColor: "#9aa1ad", fillOpacity: 0.85 });
+  livello.bringToFront();
+  mappa.setView(livello.getBounds().getCenter(), 17);
+}
+
+
+/**
+ * Mette temporaneamente in risalto un edificio, per identificarlo
+ * quando due membri della comunità sono vicini o sovrapposti.
+ */
+export function indicaEdificio(idEdificio, attivo) {
+  const livello = edificiPerId[idEdificio];
+  if (!livello) return;
+
+  if (attivo) {
+    livello.setStyle({ color: "#4f5dd8", weight: 4 });
+    livello.bringToFront();
+  } else {
+    const colore = livello.options.fillColor === "#16a34a" ? "#0b4f22" : "#7a1010";
+    livello.setStyle({ color: colore, weight: 2.5 });
   }
 }
 
@@ -123,7 +214,11 @@ function disegnaFlusso(produttori, consumatori) {
 
 
 export function pulisci() {
-  if (stratoEdifici) stratoEdifici.setStyle(STILI.normale);
+  if (stratoEdifici) {
+    stratoEdifici.setStyle(STILI.normale);
+    // Ripristino la visibilità secondo i filtri attivi
+    if (filtriAttivi) applicaFiltri(filtriAttivi);
+  }
   while (disegni.length) mappa.removeLayer(disegni.pop());
 }
 
@@ -140,38 +235,4 @@ function aggiungiLegenda() {
     return div;
   };
   legenda.addTo(mappa);
-}
-
-/**
- * Mette temporaneamente in risalto un edificio, per identificarlo
- * quando due membri della comunità sono vicini o sovrapposti.
- */
-export function indicaEdificio(idEdificio, attivo) {
-  const livello = edificiPerId[idEdificio];
-  if (!livello) return;
-
-  if (attivo) {
-    livello.setStyle({ color: "#4f5dd8", weight: 4 });
-    livello.bringToFront();
-  } else {
-    // Ripristino il bordo del ruolo: il riempimento resta quello impostato
-    const colore = livello.options.fillColor === "#16a34a" ? "#0b4f22" : "#7a1010";
-    livello.setStyle({ color: colore, weight: 2.5 });
-  }
-}
-
-/**
- * Evidenzia un singolo edificio, senza comunità:
- * serve quando l'edificio selezionato non appartiene ad alcun gruppo.
- */
-export function evidenziaSingolo(idEdificio) {
-  pulisci();
-
-  const livello = edificiPerId[idEdificio];
-  if (!livello) return;
-
-  livello.setStyle({ color: "#111", weight: 3, fillColor: "#9aa1ad", fillOpacity: 0.85 });
-  livello.bringToFront();
-
-  mappa.setView(livello.getBounds().getCenter(), 17);
 }

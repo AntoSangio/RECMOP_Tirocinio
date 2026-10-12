@@ -37,6 +37,25 @@
 
     <main id="mappa"></main>
 
+    <div id="livelli">
+      <button id="apri-livelli" aria-expanded="false">Livelli</button>
+      <div id="pannello-livelli" hidden>
+        <p class="gruppo">Edifici</p>
+        <label><input type="checkbox" data-filtro="peb" checked> Che producono energia</label>
+        <label><input type="checkbox" data-filtro="neb" checked> Che la consumano</label>
+
+        <p class="gruppo">Partecipazione</p>
+        <label><input type="checkbox" data-filtro="riuscita" checked> In una comunità</label>
+        <label><input type="checkbox" data-filtro="fallita" checked> In tentativi non riusciti</label>
+        <label><input type="checkbox" data-filtro="esclusi" checked> Non coinvolti</label>
+
+        <p class="gruppo">Sfondo</p>
+        <label><input type="radio" name="sfondo" value="standard" checked> Cartografia</label>
+        <label><input type="radio" name="sfondo" value="chiaro"> Versione chiara</label>
+        <label><input type="radio" name="sfondo" value="satellite"> Immagine satellitare</label>
+      </div>
+    </div>
+
     <section id="scheda" hidden>
       <button id="chiudi" aria-label="Chiudi">✕</button>
       <div id="contenuto"></div>
