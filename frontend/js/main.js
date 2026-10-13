@@ -383,8 +383,36 @@ pannelloLivelli.querySelectorAll('input[name="sfondo"]').forEach(scelta => {
   scelta.onchange = () => cambiaSfondo(scelta.value);
 });
 
-document.getElementById("tema").onchange = (evento) => {
-  applicaTema(evento.target.value);
+// --- Rappresentazioni tematiche ---
+
+const SPIEGAZIONE_TEMA = {
+  nessuno: `Scegli un tema per colorare tutti gli edifici secondo un dato e
+            osservare come si distribuisce sul territorio.`,
+
+  classe: `Dal verde (edifici efficienti) al rosso (edifici energivori).
+           Le zone rosse indicano dove la riqualificazione edilizia
+           avrebbe l'effetto maggiore.`,
+
+  domanda: `Quanta energia consuma ogni edificio in un anno. Dal chiaro
+            al blu scuro al crescere del consumo. Mostra dove si concentra
+            il fabbisogno del comune.`,
+
+  produzione: `Quanta energia produce ogni edificio in un anno. Gli edifici
+               più scuri sono i maggiori produttori: sono loro a rendere
+               possibili le comunità energetiche.`,
+
+  potenza: `La potenza degli impianti già installati. In grigio chiaro gli
+            edifici senza pannelli: dove sono molti, le comunità faticano
+            a formarsi perché manca chi produce.`,
+};
+
+const menuTema = document.getElementById("tema");
+const spiegazioneTema = document.getElementById("spiegazione-tema");
+
+menuTema.onchange = () => {
+  const tema = menuTema.value;
+  applicaTema(tema);
+  spiegazioneTema.textContent = SPIEGAZIONE_TEMA[tema] ?? "";
 };
 
 avvia();
