@@ -59,14 +59,25 @@ function disegnaConsultazione(comuni) {
         <span class="provincia">${c.provincia ?? ""}</span>
         <span class="conteggio">${numero(c.edifici)} edifici</span>
       </div>
-      <div class="scenari">
-        ${c.scenari.map(s => `
-          <a class="scenario-scelta" href="mappa.html?comune=${c.codice}&scenario=${s.codice}">
+
+      ${c.scenari.map(s => `
+        <div class="scenario-riga">
+          <div class="scenario-testo">
             <span class="nome">Scenario ${s.codice}</span>
             <span class="dettaglio">${DESCRIZIONE[s.codice] ?? ""}</span>
             <span class="esiti">${s.cer_riuscite} comunità costituite · ${numero(s.cer_fallite)} tentativi non riusciti</span>
-          </a>`).join("")}
-      </div>
+          </div>
+          <div class="scenario-profili">
+            <a class="profilo cittadino" href="mappa.html?comune=${c.codice}&scenario=${s.codice}&profilo=cittadino">
+              <span class="titolo-profilo">Cittadino</span>
+              <span class="descrizione-profilo">Cerca il tuo indirizzo</span>
+            </a>
+            <a class="profilo comune" href="mappa.html?comune=${c.codice}&scenario=${s.codice}&profilo=comune">
+              <span class="titolo-profilo">Amministrazione</span>
+              <span class="descrizione-profilo">Analisi del territorio</span>
+            </a>
+          </div>
+        </div>`).join("")}
     </article>`).join("");
 }
 

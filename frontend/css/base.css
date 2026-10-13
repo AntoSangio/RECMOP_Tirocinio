@@ -654,3 +654,87 @@ a.marchio:hover { color: #fff; }
 @media (max-width: 760px) {
     #livelli { left: auto; right: 12px; top: 58px; }
 }
+
+#pannello-livelli select {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--bordo);
+  border-radius: 3px;
+  font-family: inherit;
+  font-size: 13.5px;
+  background: #fff;
+  cursor: pointer;
+}
+#pannello-livelli select:focus {
+  outline: none; border-color: var(--indaco);
+}
+
+.legenda .titolo-legenda {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--tenue);
+  letter-spacing: .4px;
+  margin: 0 0 5px;
+}
+
+/* --- Scelta del profilo nella home --- */
+
+.scenario-riga {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 18px;
+  align-items: center;
+  border: 1px solid var(--bordo);
+  padding: 14px 16px;
+  margin-bottom: 10px;
+}
+.scenario-testo .nome { display: block; font-weight: 600; font-size: 16px; margin-bottom: 2px; }
+.scenario-testo .dettaglio { display: block; font-size: 13px; color: var(--tenue); margin-bottom: 6px; }
+.scenario-testo .esiti {
+  display: block; font-size: 12.5px; color: var(--tenue);
+  font-variant-numeric: tabular-nums;
+}
+
+.scenario-profili
+{ 
+  display: grid; 
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.profilo {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  height: 100%;
+  text-decoration: none;
+  color: inherit;
+  border: 1px solid var(--bordo);
+  padding: 10px 14px;
+  transition: background .12s, border-color .12s, color .12s;
+}
+.profilo:hover { background: var(--indaco); border-color: var(--indaco); color: #fff; }
+.profilo:hover .descrizione-profilo { color: rgba(255,255,255,.8); }
+.profilo .titolo-profilo { display: block; font-weight: 600; font-size: 14.5px; }
+.profilo .descrizione-profilo { display: block; font-size: 12.5px; color: var(--tenue); margin-top: 2px; }
+
+/* --- Indicazione del profilo nella mappa --- */
+
+.profilo-attivo {
+  font-size: 10.5px;
+  letter-spacing: .4px;
+  text-align: center;
+  color: rgba(255,255,255,.55);
+  margin: -6px 0 10px;
+}
+
+#livelli[hidden] { display: none; }
+.voce[hidden] { display: none; }
+
+@media (max-width: 860px) {
+  .scenario-riga { grid-template-columns: 1fr; }
+  .scenario-profili {
+     display: grid; 
+     grid-template-columns: 1fr 1fr; }
+}

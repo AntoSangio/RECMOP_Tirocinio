@@ -18,6 +18,7 @@
 
     <nav id="colonna" aria-label="Sezioni">
       <a class="marchio" href="index.html" title="Torna alla scelta del comune">RECMOP</a>
+        <p class="profilo-attivo" id="profilo-attivo"></p>
 
       <button class="voce attiva" data-sezione="cerca">
         <span class="segno">⌕</span>
@@ -40,6 +41,16 @@
     <div id="livelli">
       <button id="apri-livelli" aria-expanded="false">Livelli</button>
       <div id="pannello-livelli" hidden>
+
+        <p class="gruppo">Colora gli edifici per</p>
+        <select id="tema">
+          <option value="nessuno">Nessun tema</option>
+          <option value="classe">Classe energetica</option>
+          <option value="domanda">Consumo annuo</option>
+          <option value="produzione">Produzione annua</option>
+          <option value="potenza">Potenza installata</option>
+        </select>
+
         <p class="gruppo">Edifici</p>
         <label><input type="checkbox" data-filtro="peb" checked> Che producono energia</label>
         <label><input type="checkbox" data-filtro="neb" checked> Che la consumano</label>
@@ -53,6 +64,7 @@
         <label><input type="radio" name="sfondo" value="standard" checked> Cartografia</label>
         <label><input type="radio" name="sfondo" value="chiaro"> Versione chiara</label>
         <label><input type="radio" name="sfondo" value="satellite"> Immagine satellitare</label>
+
       </div>
     </div>
 

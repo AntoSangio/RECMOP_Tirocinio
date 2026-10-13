@@ -5,7 +5,7 @@
 
 import {
   creaMappa, disegnaEdifici, evidenziaComunita, evidenziaSingolo,
-  indicaEdificio, pulisci, cambiaSfondo, applicaFiltri,
+  indicaEdificio, pulisci, cambiaSfondo, applicaFiltri, applicaTema
 } from "./mappa.js";
 import { graficoMensile, pulisciGrafici } from "./grafici.js";
 import { contenutoTerritorio, graficiTerritorio } from "./viste/territorio.js";
@@ -16,6 +16,7 @@ const API = "http://127.0.0.1:8000/api";
 const parametri = new URLSearchParams(location.search);
 const comune = parametri.get("comune") || "avellino";
 let scenario = parametri.get("scenario") || "ambientale";
+const profilo = parametri.get("profilo") || "cittadino";
 
 const scheda = document.getElementById("scheda");
 const contenuto = document.getElementById("contenuto");
@@ -47,11 +48,43 @@ async function avvia() {
   }
 
   document.title = `RECMOP — ${datiComune.nome}`;
+  configuraProfilo();
   creaMappa([datiComune.lat, datiComune.lon]);
   costruisciSceltaScenario(datiComune.scenari);
 
   await caricaEdifici(datiComune.nome);
-  pannelloRicerca(datiComune.nome);
+    if (profilo === "comune") {
+    document.querySelector('.voce[data-sezione="territorio"]').click();
+  } else {
+    pannelloRicerca(datiComune.nome);
+  }
+}
+
+/**
+ * Adatta l'interfaccia al profilo scelto.
+ * Il cittadino cerca il proprio edificio; l'amministrazione analizza il territorio
+ * e dispone degli strumenti cartografici.
+ */
+function configuraProfilo() {
+  document.body.dataset.profilo = profilo;
+
+  const sezioneTerritorio = document.querySelector('.voce[data-sezione="territorio"]');
+  const sezioneCerca = document.querySelector('.voce[data-sezione="cerca"]');
+  const livelli = document.getElementById("livelli");
+
+  if (profilo === "comune") {
+    // L'amministrazione parte dalla panoramica e dispone dei livelli
+    sezioneCerca.classList.remove("attiva");
+    sezioneTerritorio.classList.add("attiva");
+    livelli.hidden = false;
+  } else {
+    // Il cittadino ha solo la ricerca e la spiegazione del metodo
+    sezioneTerritorio.hidden = true;
+    livelli.hidden = true;
+  }
+
+    document.getElementById("profilo-attivo").textContent =
+    profilo === "comune" ? "Amministrazione" : "Cittadino";
 }
 
 async function caricaEdifici(nomeComune) {
@@ -349,5 +382,9 @@ pannelloLivelli.querySelectorAll("[data-filtro]").forEach(casella => {
 pannelloLivelli.querySelectorAll('input[name="sfondo"]').forEach(scelta => {
   scelta.onchange = () => cambiaSfondo(scelta.value);
 });
+
+document.getElementById("tema").onchange = (evento) => {
+  applicaTema(evento.target.value);
+};
 
 avvia();
