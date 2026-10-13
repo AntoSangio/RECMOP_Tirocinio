@@ -56,11 +56,22 @@ export async function contenutoCriticita(comune, scenario, nomeComune) {
       </div>
     </div>
 
-    <p class="titoletto">Le aggregazioni più promettenti</p>
-    <p class="didascalia">
-      Tentativi non riusciti con l'indice più alto: sono quelli che si sono
-      avvicinati di più al risultato. Clicca una riga per vederli sulla mappa.
-    </p>
+        <p class="titoletto">Le aggregazioni più vicine alla soglia</p>
+    <div class="racconto">
+      <p>
+        Queste aggregazioni hanno ottenuto l'indice più alto senza raggiungere
+        la soglia richiesta: sono quelle che si sono avvicinate di più.
+      </p>
+      <p>
+        Sono le situazioni da riesaminare per prime se le condizioni del
+        territorio cambiano — per esempio a seguito di nuove installazioni
+        fotovoltaiche o della riqualificazione di alcuni edifici. Stabilire se
+        un intervento le renderebbe effettivamente realizzabili richiede però
+        una nuova elaborazione del modello, che tiene conto anche
+        dell'andamento orario di produzione e consumo.
+      </p>
+    </div>
+    <p class="didascalia">Clicca una riga per vedere l'aggregazione sulla mappa.</p>
     <table class="tabella">
       <thead>
         <tr><th>Aggregazione</th><th class="num">Edifici</th><th class="num">Indice</th></tr>
