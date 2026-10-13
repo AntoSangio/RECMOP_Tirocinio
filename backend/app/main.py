@@ -474,3 +474,91 @@ def elimina_scenario(codice: str, scenario: str):
     if not riga:
         raise HTTPException(status_code=404, detail="Scenario non trovato")
     return {"eliminato": riga["nome"]}
+
+
+@app.get("/api/{comune}/criticita/{scenario}")
+def criticita(comune: str, scenario: str):
+    """
+    Quadro delle aggregazioni non riuscite: quante sono, quali edifici
+    coinvolgono e quali caratteristiche hanno. Serve all'amministrazione
+    per individuare le aree su cui intervenire.
+    """
+    sintesi = interroga(
+        """
+        SELECT COUNT(*) AS tentativi,
+               ROUND(AVG(cr.n_membri), 1) AS membri_medi,
+               ROUND(AVG(cr.indice)::numeric, 2) AS indice_medio,
+               MAX(cr.indice) AS indice_massimo
+        FROM cer cr
+        JOIN scenario s ON s.id = cr.scenario_id
+        JOIN comune c ON c.id = s.comune_id
+        WHERE c.codice = %s AND s.codice = %s AND cr.esito = 'fallita'
+        """,
+        (comune, scenario),
+    )[0]
+
+    # Edifici coinvolti solo in tentativi non riusciti: mai entrati in una comunità
+    esclusi = interroga(
+        """
+        WITH membri_falliti AS (
+            SELECT DISTINCT m.edificio_id
+            FROM cer_membro m
+            JOIN cer cr ON cr.id = m.cer_id
+            JOIN scenario s ON s.id = cr.scenario_id
+            JOIN comune c ON c.id = s.comune_id
+            WHERE c.codice = %s AND s.codice = %s AND cr.esito = 'fallita'
+        ),
+        membri_riusciti AS (
+            SELECT DISTINCT m.edificio_id
+            FROM cer_membro m
+            JOIN cer cr ON cr.id = m.cer_id
+            JOIN scenario s ON s.id = cr.scenario_id
+            JOIN comune c ON c.id = s.comune_id
+            WHERE c.codice = %s AND s.codice = %s AND cr.esito = 'riuscita'
+        )
+        SELECT COUNT(*) AS edifici_solo_falliti
+        FROM membri_falliti f
+        WHERE f.edificio_id NOT IN (SELECT edificio_id FROM membri_riusciti)
+        """,
+        (comune, scenario, comune, scenario),
+    )[0]
+
+    # Le aggregazioni che più si sono avvicinate alla soglia
+    vicine = interroga(
+        """
+        SELECT cr.codice, cr.n_membri, cr.indice, cr.iterazione,
+               cr.domanda_annua, cr.autoconsumo_diffuso
+        FROM cer cr
+        JOIN scenario s ON s.id = cr.scenario_id
+        JOIN comune c ON c.id = s.comune_id
+        WHERE c.codice = %s AND s.codice = %s AND cr.esito = 'fallita'
+          AND cr.indice IS NOT NULL
+        ORDER BY cr.indice DESC
+        LIMIT 20
+        """,
+        (comune, scenario),
+    )
+
+    # Classe energetica degli edifici coinvolti solo in tentativi non riusciti
+    per_classe = interroga(
+        """
+        WITH falliti AS (
+            SELECT DISTINCT m.edificio_id
+            FROM cer_membro m
+            JOIN cer cr ON cr.id = m.cer_id
+            JOIN scenario s ON s.id = cr.scenario_id
+            JOIN comune c ON c.id = s.comune_id
+            WHERE c.codice = %s AND s.codice = %s AND cr.esito = 'fallita'
+        )
+        SELECT e.classe_energetica AS classe, COUNT(*) AS numero
+        FROM falliti f JOIN edificio e ON e.id = f.edificio_id
+        GROUP BY e.classe_energetica ORDER BY e.classe_energetica
+        """,
+        (comune, scenario),
+    )
+
+    return {
+        "sintesi": {**sintesi, **esclusi},
+        "piu_vicine": vicine,
+        "classi": per_classe,
+    }
