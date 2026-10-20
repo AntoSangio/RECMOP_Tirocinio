@@ -7,13 +7,18 @@ possa servire più comuni senza modifiche al codice.
 """
 
 import os
+import shutil
+import tempfile
+import zipfile
 from pathlib import Path
 
 import psycopg
 from psycopg.rows import dict_row
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
+
+from app.importazione import importa_pacchetto
 
 # --- Configurazione ---
 
@@ -31,10 +36,9 @@ DB = {
 app = FastAPI(
     title="API Comunità Energetiche Rinnovabili",
     description="Consultazione degli output del modello RECMOP",
-    version="0.2.0",
+    version="0.3.0",
 )
 
-# Permette al browser di interrogare il server durante lo sviluppo
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -51,7 +55,12 @@ def interroga(sql, parametri=()):
             return cur.fetchall()
 
 
-# --- Endpoint ---
+def connessione():
+    """Connessione da usare per le operazioni di scrittura."""
+    return psycopg.connect(**DB, row_factory=dict_row)
+
+
+# --- Stato e anagrafica ---
 
 @app.get("/api/stato")
 def stato():
@@ -97,6 +106,8 @@ def comuni():
 
     return elenco
 
+
+# --- Consultazione ---
 
 @app.get("/api/{comune}/kpi/{scenario}")
 def kpi(comune: str, scenario: str):
@@ -242,12 +253,26 @@ def dettaglio_cer(comune: str, scenario: str, codice: str):
     membri = interroga(
         """
         SELECT e.id_edificio, e.ruolo, e.classe_energetica,
-               e.domanda_annua, e.produzione_annua, e.potenza_picco
+               e.domanda_annua, e.produzione_annua, e.potenza_picco,
+               ST_X(ST_Centroid(e.geom)) AS lon,
+               ST_Y(ST_Centroid(e.geom)) AS lat
         FROM cer_membro m JOIN edificio e ON e.id = m.edificio_id
         WHERE m.cer_id = %s ORDER BY e.ruolo, e.id_edificio
         """,
         (cer_id,),
     )
+
+    # Estensione della comunità: distanza massima tra due membri
+    estensione = interroga(
+        """
+        SELECT ROUND(MAX(ST_Distance(a.geom::geography, b.geom::geography))) AS distanza_max
+        FROM cer_membro ma JOIN edificio a ON a.id = ma.edificio_id
+        CROSS JOIN cer_membro mb JOIN edificio b ON b.id = mb.edificio_id
+        WHERE ma.cer_id = %s AND mb.cer_id = %s
+        """,
+        (cer_id, cer_id),
+    )[0]
+    comunita["distanza_massima_m"] = estensione["distanza_max"]
 
     mensili = interroga(
         """
@@ -299,6 +324,41 @@ def cer_di_edificio(comune: str, id_edificio: int, scenario: str):
     return risultato
 
 
+@app.get("/api/{comune}/edificio/{id_edificio}/distanze")
+def distanze_dai_membri(comune: str, id_edificio: int, scenario: str):
+    """
+    Distanza tra un edificio e gli altri membri della sua comunità.
+    Il calcolo è eseguito da PostGIS sulle geometrie reali.
+    """
+    return interroga(
+        """
+        WITH scelto AS (
+            SELECT e.id, e.geom
+            FROM edificio e JOIN comune c ON c.id = e.comune_id
+            WHERE c.codice = %s AND e.id_edificio = %s
+        ),
+        sua_cer AS (
+            SELECT cr.id
+            FROM cer_membro m
+            JOIN cer cr ON cr.id = m.cer_id
+            JOIN scenario s ON s.id = cr.scenario_id
+            JOIN comune c ON c.id = s.comune_id
+            JOIN scelto ON scelto.id = m.edificio_id
+            WHERE c.codice = %s AND s.codice = %s AND cr.esito = 'riuscita'
+        )
+        SELECT e.id_edificio,
+               ROUND(ST_Distance(e.geom::geography, scelto.geom::geography)) AS distanza_m
+        FROM cer_membro m
+        JOIN edificio e ON e.id = m.edificio_id
+        JOIN sua_cer ON sua_cer.id = m.cer_id
+        CROSS JOIN scelto
+        WHERE e.id <> scelto.id
+        ORDER BY distanza_m
+        """,
+        (comune, id_edificio, comune, scenario),
+    )
+
+
 @app.get("/api/{comune}/edificio-vicino")
 def edificio_vicino(comune: str, lat: float, lon: float):
     """Edificio più vicino a un punto: usa l'indice spaziale di PostGIS."""
@@ -315,6 +375,8 @@ def edificio_vicino(comune: str, lat: float, lon: float):
     )
     return righe[0] if righe else {"id_edificio": None}
 
+
+# --- Analisi per l'amministrazione ---
 
 @app.get("/api/{comune}/distribuzioni/{scenario}")
 def distribuzioni(comune: str, scenario: str):
@@ -379,20 +441,93 @@ def confronto(comune: str):
         (comune,),
     )
 
+
+@app.get("/api/{comune}/criticita/{scenario}")
+def criticita(comune: str, scenario: str):
+    """
+    Quadro delle aggregazioni non riuscite: quante sono, quali edifici
+    coinvolgono e quali caratteristiche hanno. Serve all'amministrazione
+    per individuare le aree su cui intervenire.
+    """
+    sintesi = interroga(
+        """
+        SELECT COUNT(*) AS tentativi,
+               ROUND(AVG(cr.n_membri), 1) AS membri_medi,
+               ROUND(AVG(cr.indice)::numeric, 2) AS indice_medio,
+               MAX(cr.indice) AS indice_massimo
+        FROM cer cr
+        JOIN scenario s ON s.id = cr.scenario_id
+        JOIN comune c ON c.id = s.comune_id
+        WHERE c.codice = %s AND s.codice = %s AND cr.esito = 'fallita'
+        """,
+        (comune, scenario),
+    )[0]
+
+    esclusi = interroga(
+        """
+        WITH membri_falliti AS (
+            SELECT DISTINCT m.edificio_id
+            FROM cer_membro m
+            JOIN cer cr ON cr.id = m.cer_id
+            JOIN scenario s ON s.id = cr.scenario_id
+            JOIN comune c ON c.id = s.comune_id
+            WHERE c.codice = %s AND s.codice = %s AND cr.esito = 'fallita'
+        ),
+        membri_riusciti AS (
+            SELECT DISTINCT m.edificio_id
+            FROM cer_membro m
+            JOIN cer cr ON cr.id = m.cer_id
+            JOIN scenario s ON s.id = cr.scenario_id
+            JOIN comune c ON c.id = s.comune_id
+            WHERE c.codice = %s AND s.codice = %s AND cr.esito = 'riuscita'
+        )
+        SELECT COUNT(*) AS edifici_solo_falliti
+        FROM membri_falliti f
+        WHERE f.edificio_id NOT IN (SELECT edificio_id FROM membri_riusciti)
+        """,
+        (comune, scenario, comune, scenario),
+    )[0]
+
+    vicine = interroga(
+        """
+        SELECT cr.codice, cr.n_membri, cr.indice, cr.iterazione,
+               cr.domanda_annua, cr.autoconsumo_diffuso
+        FROM cer cr
+        JOIN scenario s ON s.id = cr.scenario_id
+        JOIN comune c ON c.id = s.comune_id
+        WHERE c.codice = %s AND s.codice = %s AND cr.esito = 'fallita'
+          AND cr.indice IS NOT NULL
+        ORDER BY cr.indice DESC
+        LIMIT 20
+        """,
+        (comune, scenario),
+    )
+
+    per_classe = interroga(
+        """
+        WITH falliti AS (
+            SELECT DISTINCT m.edificio_id
+            FROM cer_membro m
+            JOIN cer cr ON cr.id = m.cer_id
+            JOIN scenario s ON s.id = cr.scenario_id
+            JOIN comune c ON c.id = s.comune_id
+            WHERE c.codice = %s AND s.codice = %s AND cr.esito = 'fallita'
+        )
+        SELECT e.classe_energetica AS classe, COUNT(*) AS numero
+        FROM falliti f JOIN edificio e ON e.id = f.edificio_id
+        GROUP BY e.classe_energetica ORDER BY e.classe_energetica
+        """,
+        (comune, scenario),
+    )
+
+    return {
+        "sintesi": {**sintesi, **esclusi},
+        "piu_vicine": vicine,
+        "classi": per_classe,
+    }
+
+
 # --- Gestione dei dati ---
-
-import shutil
-import tempfile
-import zipfile
-from fastapi import UploadFile, File, Form
-
-from app.importazione import importa_pacchetto
-
-
-def connessione():
-    """Connessione da usare per le operazioni di scrittura."""
-    return psycopg.connect(**DB, row_factory=dict_row)
-
 
 @app.post("/api/gestione/importa")
 async def importa(
@@ -411,11 +546,9 @@ async def importa(
         temporanea = Path(temporanea)
         archivio = temporanea / pacchetto.filename
 
-        # Salvo il file ricevuto
         with open(archivio, "wb") as f:
             shutil.copyfileobj(pacchetto.file, f)
 
-        # Lo estraggo
         estratto = temporanea / "estratto"
         try:
             with zipfile.ZipFile(archivio) as z:
@@ -423,7 +556,6 @@ async def importa(
         except zipfile.BadZipFile:
             raise HTTPException(status_code=400, detail="Il file non è un archivio zip valido.")
 
-        # Individuo la cartella del pacchetto, anche se annidata
         cartella = None
         for candidata in [estratto, *estratto.rglob("*")]:
             if candidata.is_dir() and (candidata / "data").is_dir():
@@ -474,91 +606,3 @@ def elimina_scenario(codice: str, scenario: str):
     if not riga:
         raise HTTPException(status_code=404, detail="Scenario non trovato")
     return {"eliminato": riga["nome"]}
-
-
-@app.get("/api/{comune}/criticita/{scenario}")
-def criticita(comune: str, scenario: str):
-    """
-    Quadro delle aggregazioni non riuscite: quante sono, quali edifici
-    coinvolgono e quali caratteristiche hanno. Serve all'amministrazione
-    per individuare le aree su cui intervenire.
-    """
-    sintesi = interroga(
-        """
-        SELECT COUNT(*) AS tentativi,
-               ROUND(AVG(cr.n_membri), 1) AS membri_medi,
-               ROUND(AVG(cr.indice)::numeric, 2) AS indice_medio,
-               MAX(cr.indice) AS indice_massimo
-        FROM cer cr
-        JOIN scenario s ON s.id = cr.scenario_id
-        JOIN comune c ON c.id = s.comune_id
-        WHERE c.codice = %s AND s.codice = %s AND cr.esito = 'fallita'
-        """,
-        (comune, scenario),
-    )[0]
-
-    # Edifici coinvolti solo in tentativi non riusciti: mai entrati in una comunità
-    esclusi = interroga(
-        """
-        WITH membri_falliti AS (
-            SELECT DISTINCT m.edificio_id
-            FROM cer_membro m
-            JOIN cer cr ON cr.id = m.cer_id
-            JOIN scenario s ON s.id = cr.scenario_id
-            JOIN comune c ON c.id = s.comune_id
-            WHERE c.codice = %s AND s.codice = %s AND cr.esito = 'fallita'
-        ),
-        membri_riusciti AS (
-            SELECT DISTINCT m.edificio_id
-            FROM cer_membro m
-            JOIN cer cr ON cr.id = m.cer_id
-            JOIN scenario s ON s.id = cr.scenario_id
-            JOIN comune c ON c.id = s.comune_id
-            WHERE c.codice = %s AND s.codice = %s AND cr.esito = 'riuscita'
-        )
-        SELECT COUNT(*) AS edifici_solo_falliti
-        FROM membri_falliti f
-        WHERE f.edificio_id NOT IN (SELECT edificio_id FROM membri_riusciti)
-        """,
-        (comune, scenario, comune, scenario),
-    )[0]
-
-    # Le aggregazioni che più si sono avvicinate alla soglia
-    vicine = interroga(
-        """
-        SELECT cr.codice, cr.n_membri, cr.indice, cr.iterazione,
-               cr.domanda_annua, cr.autoconsumo_diffuso
-        FROM cer cr
-        JOIN scenario s ON s.id = cr.scenario_id
-        JOIN comune c ON c.id = s.comune_id
-        WHERE c.codice = %s AND s.codice = %s AND cr.esito = 'fallita'
-          AND cr.indice IS NOT NULL
-        ORDER BY cr.indice DESC
-        LIMIT 20
-        """,
-        (comune, scenario),
-    )
-
-    # Classe energetica degli edifici coinvolti solo in tentativi non riusciti
-    per_classe = interroga(
-        """
-        WITH falliti AS (
-            SELECT DISTINCT m.edificio_id
-            FROM cer_membro m
-            JOIN cer cr ON cr.id = m.cer_id
-            JOIN scenario s ON s.id = cr.scenario_id
-            JOIN comune c ON c.id = s.comune_id
-            WHERE c.codice = %s AND s.codice = %s AND cr.esito = 'fallita'
-        )
-        SELECT e.classe_energetica AS classe, COUNT(*) AS numero
-        FROM falliti f JOIN edificio e ON e.id = f.edificio_id
-        GROUP BY e.classe_energetica ORDER BY e.classe_energetica
-        """,
-        (comune, scenario),
-    )
-
-    return {
-        "sintesi": {**sintesi, **esclusi},
-        "piu_vicine": vicine,
-        "classi": per_classe,
-    }

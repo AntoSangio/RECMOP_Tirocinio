@@ -745,3 +745,18 @@ a.marchio:hover { color: #fff; }
   color: var(--tenue);
   margin: 7px 0 2px;
 }
+
+.membri-tabella tbody tr.peb td:first-child 
+{ 
+  border-left: 3px solid var(--peb); padding-left: 7px; 
+}
+
+.membri-tabella tbody tr.neb td:first-child
+{ 
+  border-left: 3px solid var(--neb); padding-left: 7px; 
+}
+
+.membri-tabella tbody tr:hover 
+{
+  background: #eef0fd;
+}

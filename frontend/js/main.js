@@ -1,18 +1,19 @@
 /**
- * Pagina della mappa: legge comune e scenario dall'indirizzo,
+ * Pagina della mappa: legge comune, scenario e profilo dall'indirizzo,
  * carica i dati e gestisce le interazioni.
  */
 
-import {creaMappa, disegnaEdifici, evidenziaComunita, evidenziaSingolo,
-        indicaEdificio, pulisci, cambiaSfondo, applicaFiltri, applicaTema
-       } from "./mappa.js";
+import {
+  creaMappa, disegnaEdifici, evidenziaComunita, evidenziaSingolo,
+  indicaEdificio, pulisci, cambiaSfondo, applicaFiltri, applicaTema,
+} from "./mappa.js";
 import { graficoMensile, pulisciGrafici } from "./grafici.js";
 import { contenutoTerritorio, graficiTerritorio } from "./viste/territorio.js";
 import { contenutoCriticita } from "./viste/criticita.js";
 
 const API = "http://127.0.0.1:8000/api";
 
-// Comune e scenario arrivano dalla pagina iniziale
+// Comune, scenario e profilo arrivano dalla pagina iniziale
 const parametri = new URLSearchParams(location.search);
 const comune = parametri.get("comune") || "avellino";
 let scenario = parametri.get("scenario") || "ambientale";
@@ -53,7 +54,8 @@ async function avvia() {
   costruisciSceltaScenario(datiComune.scenari);
 
   await caricaEdifici(datiComune.nome);
-    if (profilo === "comune") {
+
+  if (profilo === "comune") {
     document.querySelector('.voce[data-sezione="territorio"]').click();
   } else {
     pannelloRicerca(datiComune.nome);
@@ -69,22 +71,21 @@ function configuraProfilo() {
   document.body.dataset.profilo = profilo;
 
   const sezioneTerritorio = document.querySelector('.voce[data-sezione="territorio"]');
+  const sezioneCriticita = document.querySelector('.voce[data-sezione="criticita"]');
   const sezioneCerca = document.querySelector('.voce[data-sezione="cerca"]');
   const livelli = document.getElementById("livelli");
 
   if (profilo === "comune") {
-    // L'amministrazione parte dalla panoramica e dispone dei livelli
     sezioneCerca.classList.remove("attiva");
     sezioneTerritorio.classList.add("attiva");
     livelli.hidden = false;
   } else {
-    // Il cittadino ha solo la ricerca e la spiegazione del metodo
     sezioneTerritorio.hidden = true;
-    document.querySelector('.voce[data-sezione="criticita"]').hidden = true;
+    if (sezioneCriticita) sezioneCriticita.hidden = true;
     livelli.hidden = true;
   }
 
-    document.getElementById("profilo-attivo").textContent =
+  document.getElementById("profilo-attivo").textContent =
     profilo === "comune" ? "Amministrazione" : "Cittadino";
 }
 
@@ -183,8 +184,15 @@ async function cerca(testo, nomeComune) {
 // --- Dettaglio di un edificio ---
 
 async function apriEdificio(idEdificio) {
-  const dati = await fetch(`${API}/${comune}/edificio/${idEdificio}/cer/${scenario}`)
-    .then(r => r.json());
+  const [dati, distanze] = await Promise.all([
+    fetch(`${API}/${comune}/edificio/${idEdificio}/cer/${scenario}`).then(r => r.json()),
+    fetch(`${API}/${comune}/edificio/${idEdificio}/distanze?scenario=${scenario}`)
+      .then(r => r.json()).catch(() => []),
+  ]);
+  const distanzaDi = Object.fromEntries(
+    (distanze ?? []).map(d => [d.id_edificio, d.distanza_m])
+  );
+
   const e = dati.edificio;
 
   let html = `
@@ -261,6 +269,9 @@ async function apriEdificio(idEdificio) {
         <span class="valore">${numero(c.eccedenza)} kWh</span></div>
       <div class="dato"><span class="nome">Emissioni evitate</span>
         <span class="valore">${numero(c.co2_evitata_kg)} kg CO₂</span></div>
+      ${c.distanza_massima_m != null ? `
+      <div class="dato"><span class="nome">Estensione</span>
+        <span class="valore">${numero(c.distanza_massima_m)} m</span></div>` : ""}
     </div>
 
     <p class="titoletto">Energia nel corso dell'anno</p>
@@ -271,15 +282,33 @@ async function apriEdificio(idEdificio) {
     </p>
 
     <p class="titoletto">Edifici che la compongono</p>
-    <div class="membri">
-      ${membri.map(m => `
-        <span class="membro ${m.ruolo.toLowerCase()}" data-id="${m.id_edificio}">
-          ${m.id_edificio}
-        </span>`).join("")}
-    </div>
+    <table class="tabella membri-tabella">
+      <thead>
+        <tr><th>Edificio</th><th>Ruolo</th><th class="num">Distanza</th></tr>
+      </thead>
+      <tbody>
+        ${membri.map(m => `
+          <tr class="membro ${m.ruolo.toLowerCase()}" data-id="${m.id_edificio}">
+            <td class="codice">${m.id_edificio}${m.id_edificio === e.id_edificio ? " (questo)" : ""}</td>
+            <td>${m.ruolo === "PEB" ? "produce" : "consuma"}</td>
+            <td class="num">${
+              m.id_edificio === e.id_edificio ? "–" :
+              distanzaDi[m.id_edificio] != null ? numero(distanzaDi[m.id_edificio]) + " m" : "–"
+            }</td>
+          </tr>`).join("")}
+      </tbody>
+    </table>
     <p class="aiuto">
-      Passa il cursore su un numero per individuarlo sulla mappa, o cliccalo per aprirlo.
-      Verde: produce energia. Rosso: la consuma.
+      Passa il cursore su una riga per individuare l'edificio sulla mappa,
+      o cliccala per aprirlo.
+    </p>
+
+    <p class="titoletto">Perché proprio questi edifici</p>
+    <p class="aiuto">
+      Il modello cerca, per ogni edificio che consuma, i produttori nelle vicinanze
+      e confronta i loro andamenti orari: sceglie l'abbinamento in cui la produzione
+      copre il fabbisogno per il maggior numero di ore. L'aggregazione viene poi
+      accettata solo se supera una soglia di efficienza complessiva.
     </p>`;
 
   mostraScheda(html);
@@ -333,7 +362,7 @@ document.querySelectorAll(".voce").forEach(voce => {
       });
     }
 
-        if (sezione === "criticita") {
+    if (sezione === "criticita") {
       mostraScheda(`<p class="aiuto">Caricamento…</p>`);
       pulisci();
       const vista = await contenutoCriticita(comune, scenario, nomeComune);
