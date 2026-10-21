@@ -634,3 +634,11 @@ def edificio_negli_scenari(comune: str, id_edificio: int):
         """,
         (id_edificio, comune),
     )
+
+@app.get("/api/{comune}/cer/{scenario}/{codice_a}/confronta/{codice_b}")
+def confronta_comunita(comune: str, scenario: str, codice_a: str, codice_b: str):
+    """Mette a confronto due comunità dello stesso scenario."""
+    return {
+        "prima": dettaglio_cer(comune, scenario, codice_a),
+        "seconda": dettaglio_cer(comune, scenario, codice_b),
+    }

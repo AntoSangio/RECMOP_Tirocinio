@@ -8,7 +8,7 @@ import {
   indicaEdificio, pulisci, cambiaSfondo, applicaFiltri, applicaTema,
 } from "./mappa.js";
 import { graficoMensile, pulisciGrafici } from "./grafici.js";
-import { contenutoTerritorio, graficiTerritorio } from "./viste/territorio.js";
+import { contenutoTerritorio, graficiTerritorio, attivaTabellaCer } from "./viste/territorio.js";
 import { contenutoCriticita } from "./viste/criticita.js";
 
 const API = "http://127.0.0.1:8000/api";
@@ -388,15 +388,14 @@ document.querySelectorAll(".voce").forEach(voce => {
       pannelloRicerca(nomeComune);
     }
 
-    if (sezione === "territorio") {
+    if (sezione === "territorio") 
+    {
       mostraScheda(`<p class="aiuto">Caricamento…</p>`);
       pulisci();
       const vista = await contenutoTerritorio(comune, scenario, nomeComune);
       mostraScheda(vista.html);
       graficiTerritorio(vista.distribuzioni);
-      contenuto.querySelectorAll(".tabella tbody tr").forEach(riga => {
-        riga.onclick = () => apriComunita(riga.dataset.codice);
-      });
+      attivaTabellaCer(apriComunita);
     }
 
     if (sezione === "criticita") {

@@ -801,3 +801,50 @@ a.marchio:hover { color: #fff; }
 { 
   font-style: italic; 
 }
+
+/* --- Filtri e confronto nella vista territorio --- */
+
+.filtri {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.filtro.ampio { grid-column: 1 / -1; }
+.filtro label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--tenue);
+  margin-bottom: 4px;
+}
+.filtro select,
+.filtro input {
+  width: 100%;
+  padding: 7px 9px;
+  border: 1px solid var(--bordo);
+  border-radius: 3px;
+  font-family: inherit;
+  font-size: 13.5px;
+  background: #fff;
+}
+.filtro select:focus,
+.filtro input:focus {
+  outline: none; border-color: var(--indaco);
+  box-shadow: 0 0 0 3px rgba(79,93,216,.14);
+}
+
+.tabella-cer .scegli { cursor: pointer; }
+
+.confronto-cer th { font-weight: 600; }
+.confronto-cer tbody th {
+  text-align: left; color: var(--tenue); font-weight: 400;
+}
+.confronto-cer td {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.confronto-cer td.migliore 
+{
+   font-weight: 700; color: var(--testo); 
+}
