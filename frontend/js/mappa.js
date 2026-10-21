@@ -375,10 +375,51 @@ function aggiornaLegenda() {
     </div>`;
 }
 
-function legendaBase() {
+function legendaBase() 
+{
   return `
     <div class="voce-legenda"><span class="campione" style="background:#3b82f6"></span> Edificio</div>
     <div class="voce-legenda"><span class="campione" style="background:#16a34a"></span> PEB · produce energia</div>
     <div class="voce-legenda"><span class="campione" style="background:#dc2626"></span> NEB · consuma energia</div>
     <div class="voce-legenda"><span class="filetto"></span> Flusso di energia</div>`;
+}
+
+/* --- Panoramica delle comunità --- */
+
+let stratoComunita;
+
+/**
+ * Mostra tutte le comunità come indicatori posizionati al loro centro.
+ * Dà il colpo d'occhio sulla distribuzione territoriale, che la sola
+ * colorazione degli edifici non permette a scala di comune.
+ */
+export function mostraComunita(posizioni, alClick) {
+  nascondiComunita();
+
+  stratoComunita = L.layerGroup().addTo(mappa);
+
+  for (const p of posizioni) {
+    if (p.lat == null || p.lon == null) continue;
+
+    const indicatore = L.circleMarker([p.lat, p.lon], {
+      radius: 6 + Math.min(p.n_membri, 12),
+      color: "#0b4f22",
+      weight: 1.5,
+      fillColor: "#16a34a",
+      fillOpacity: 0.55,
+    }).addTo(stratoComunita);
+
+    indicatore.bindTooltip(
+      `Comunità di ${p.n_membri} edifici`,
+      { direction: "top" }
+    );
+    indicatore.on("click", () => alClick(p.codice));
+  }
+}
+
+export function nascondiComunita() {
+  if (stratoComunita) {
+    mappa.removeLayer(stratoComunita);
+    stratoComunita = null;
+  }
 }

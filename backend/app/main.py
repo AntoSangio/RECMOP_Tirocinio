@@ -642,3 +642,25 @@ def confronta_comunita(comune: str, scenario: str, codice_a: str, codice_b: str)
         "prima": dettaglio_cer(comune, scenario, codice_a),
         "seconda": dettaglio_cer(comune, scenario, codice_b),
     }
+
+@app.get("/api/{comune}/cer-posizioni/{scenario}")
+def posizioni_cer(comune: str, scenario: str):
+    """
+    Posizione di ciascuna comunità sul territorio, calcolata come centro
+    dei suoi edifici. Serve a mostrarle tutte insieme sulla mappa.
+    """
+    return interroga(
+        """
+        SELECT cr.codice, cr.n_membri, cr.autoconsumo_diffuso,
+               ST_Y(ST_Centroid(ST_Collect(e.geom))) AS lat,
+               ST_X(ST_Centroid(ST_Collect(e.geom))) AS lon
+        FROM cer cr
+        JOIN scenario s ON s.id = cr.scenario_id
+        JOIN comune c ON c.id = s.comune_id
+        JOIN cer_membro m ON m.cer_id = cr.id
+        JOIN edificio e ON e.id = m.edificio_id
+        WHERE c.codice = %s AND s.codice = %s AND cr.esito = 'riuscita'
+        GROUP BY cr.id, cr.codice, cr.n_membri, cr.autoconsumo_diffuso
+        """,
+        (comune, scenario),
+    )

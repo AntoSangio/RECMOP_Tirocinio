@@ -3,9 +3,10 @@
  * carica i dati e gestisce le interazioni.
  */
 
-import {
+import 
+{
   creaMappa, disegnaEdifici, evidenziaComunita, evidenziaSingolo,
-  indicaEdificio, pulisci, cambiaSfondo, applicaFiltri, applicaTema,
+  indicaEdificio, pulisci, cambiaSfondo, applicaFiltri, applicaTema, mostraComunita, nascondiComunita,
 } from "./mappa.js";
 import { graficoMensile, pulisciGrafici } from "./grafici.js";
 import { contenutoTerritorio, graficiTerritorio, attivaTabellaCer } from "./viste/territorio.js";
@@ -365,11 +366,72 @@ async function mostraConfrontoScenari(idEdificio) {
      </p>`;
 }
 
+/** Apre una comunità: la evidenzia sulla mappa e ne mostra i dati nel pannello. */
 async function apriComunita(codice) {
   const dati = await fetch(`${API}/${comune}/cer/${scenario}/${codice}`).then(r => r.json());
-  if (dati.membri?.length) {
-    evidenziaComunita(dati.membri[0].id_edificio, dati.membri);
+  const c = dati.comunita;
+  const membri = dati.membri;
+
+  const produttori = membri.filter(m => m.ruolo === "PEB");
+  const consumatori = membri.filter(m => m.ruolo === "NEB");
+
+  mostraScheda(`
+    <h1 class="intestazione">Comunità di ${c.n_membri} edifici</h1>
+    <p class="occhiello" style="word-break:break-all">${c.codice}</p>
+
+    <div class="dati">
+      <div class="dato"><span class="nome">Edifici che producono</span>
+        <span class="valore">${produttori.length}</span></div>
+      <div class="dato"><span class="nome">Edifici che consumano</span>
+        <span class="valore">${consumatori.length}</span></div>
+      <div class="dato"><span class="nome">Energia condivisa</span>
+        <span class="valore">${numero(c.autoconsumo_diffuso)} kWh</span></div>
+      <div class="dato"><span class="nome">Energia eccedente</span>
+        <span class="valore">${numero(c.eccedenza)} kWh</span></div>
+      <div class="dato"><span class="nome">Emissioni evitate</span>
+        <span class="valore">${numero(c.co2_evitata_kg)} kg CO₂</span></div>
+      ${c.indice != null ? `
+      <div class="dato"><span class="nome">Indice</span>
+        <span class="valore">${Number(c.indice).toFixed(2)}</span></div>` : ""}
+      ${c.distanza_massima_m != null ? `
+      <div class="dato"><span class="nome">Estensione</span>
+        <span class="valore">${numero(c.distanza_massima_m)} m</span></div>` : ""}
+      ${c.iterazione != null ? `
+      <div class="dato"><span class="nome">Formata all'iterazione</span>
+        <span class="valore">${c.iterazione}</span></div>` : ""}
+    </div>
+
+    <p class="titoletto">Energia nel corso dell'anno</p>
+    <div class="grafico"><canvas id="mensile-cer"></canvas></div>
+
+    <p class="titoletto">Edifici che la compongono</p>
+    <table class="tabella membri-tabella">
+      <thead><tr><th>Edificio</th><th>Ruolo</th><th class="num">Consumo</th></tr></thead>
+      <tbody>
+        ${membri.map(m => `
+          <tr class="membro ${m.ruolo.toLowerCase()}" data-id="${m.id_edificio}">
+            <td class="codice">${m.id_edificio}</td>
+            <td>${m.ruolo === "PEB" ? "produce" : "consuma"}</td>
+            <td class="num">${numero(m.domanda_annua)} kWh</td>
+          </tr>`).join("")}
+      </tbody>
+    </table>
+    <p class="aiuto">Clicca una riga per aprire la scheda di quell'edificio.</p>`);
+
+  if (dati.mensili?.length) {
+    graficoMensile(document.getElementById("mensile-cer"), dati.mensili);
   }
+
+  if (membri.length) {
+    evidenziaComunita(membri[0].id_edificio, membri);
+  }
+
+  contenuto.querySelectorAll(".membro").forEach(el => {
+    const id = Number(el.dataset.id);
+    el.onclick = () => apriEdificio(id);
+    el.onmouseenter = () => indicaEdificio(id, true);
+    el.onmouseleave = () => indicaEdificio(id, false);
+  });
 }
 
 // --- Navigazione tra le sezioni ---
@@ -385,6 +447,7 @@ document.querySelectorAll(".voce").forEach(voce => {
 
     if (sezione === "cerca") {
       pulisci();
+      nascondiComunita();
       pannelloRicerca(nomeComune);
     }
 
@@ -396,11 +459,16 @@ document.querySelectorAll(".voce").forEach(voce => {
       mostraScheda(vista.html);
       graficiTerritorio(vista.distribuzioni);
       attivaTabellaCer(apriComunita);
+      // Mostro tutte le comunità sul territorio
+      const posizioni = await fetch(`${API}/${comune}/cer-posizioni/${scenario}`)
+      .then(r => r.json()).catch(() => []);
+      mostraComunita(posizioni, apriComunita);
     }
 
     if (sezione === "criticita") {
       mostraScheda(`<p class="aiuto">Caricamento…</p>`);
       pulisci();
+      nascondiComunita();
       const vista = await contenutoCriticita(comune, scenario, nomeComune);
       mostraScheda(vista.html);
       contenuto.querySelectorAll(".tabella tbody tr").forEach(riga => {
@@ -410,6 +478,7 @@ document.querySelectorAll(".voce").forEach(voce => {
 
     if (sezione === "metodo") {
       pulisci();
+      nascondiComunita();
       mostraScheda(`
         <h1 class="intestazione">Come nascono i dati</h1>
         <p class="occhiello">Modello RECMOP</p>
