@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Riepilogo della comunità energetica</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Titillium+Web:wght@400;600;700&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="css/base.css">
+  <link rel="stylesheet" href="css/stampa.css">
+</head>
+<body class="foglio">
+
+  <div class="barra-stampa">
+    <button onclick="window.print()">Salva come PDF o stampa</button>
+    <a href="#" id="torna">Torna alla mappa</a>
+  </div>
+
+  <main id="documento">
+    <p class="attesa">Caricamento del riepilogo…</p>
+  </main>
+
+  <script src="https://unpkg.com/chart.js@4.4.1/dist/chart.umd.js"></script>
+  <script type="module" src="js/riepilogo.js"></script>
+</body>
+</html>

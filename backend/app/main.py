@@ -606,3 +606,31 @@ def elimina_scenario(codice: str, scenario: str):
     if not riga:
         raise HTTPException(status_code=404, detail="Scenario non trovato")
     return {"eliminato": riga["nome"]}
+
+
+@app.get("/api/{comune}/edificio/{id_edificio}/scenari")
+def edificio_negli_scenari(comune: str, id_edificio: int):
+    """
+    Come cambia la situazione di un edificio nei diversi scenari:
+    in quale comunità rientra e con quali risultati.
+    """
+    return interroga(
+        """
+        SELECT s.codice AS scenario,
+               cr.codice AS cer,
+               cr.n_membri,
+               cr.autoconsumo_diffuso,
+               cr.indice
+        FROM scenario s
+        JOIN comune c ON c.id = s.comune_id
+        LEFT JOIN cer cr ON cr.scenario_id = s.id AND cr.esito = 'riuscita'
+             AND cr.id IN (
+                 SELECT m.cer_id FROM cer_membro m
+                 JOIN edificio e ON e.id = m.edificio_id
+                 WHERE e.comune_id = c.id AND e.id_edificio = %s
+             )
+        WHERE c.codice = %s
+        ORDER BY s.codice
+        """,
+        (id_edificio, comune),
+    )

@@ -303,15 +303,25 @@ async function apriEdificio(idEdificio) {
       o cliccala per aprirlo.
     </p>
 
-    <p class="titoletto">Perché proprio questi edifici</p>
+        <p class="titoletto">Perché proprio questi edifici</p>
     <p class="aiuto">
       Il modello cerca, per ogni edificio che consuma, i produttori nelle vicinanze
       e confronta i loro andamenti orari: sceglie l'abbinamento in cui la produzione
       copre il fabbisogno per il maggior numero di ore. L'aggregazione viene poi
       accettata solo se supera una soglia di efficienza complessiva.
-    </p>`;
+    </p>
+
+    <p class="titoletto">Nei due scenari</p>
+    <div id="confronto-scenari"><p class="aiuto">Caricamento…</p></div>
+
+    <a class="azione-scheda" target="_blank"
+       href="riepilogo.html?comune=${comune}&scenario=${scenario}&edificio=${e.id_edificio}">
+      Scarica il riepilogo
+    </a>`;
 
   mostraScheda(html);
+
+  mostraConfrontoScenari(idEdificio);
 
   const mensili = dati.comunita.mensili;
   if (mensili?.length) {
@@ -326,6 +336,33 @@ async function apriEdificio(idEdificio) {
     el.onmouseenter = () => indicaEdificio(id, true);
     el.onmouseleave = () => indicaEdificio(id, false);
   });
+}
+
+/** Mostra in quale comunità rientra l'edificio nei diversi scenari. */
+async function mostraConfrontoScenari(idEdificio) {
+  const contenitore = document.getElementById("confronto-scenari");
+  if (!contenitore) return;
+
+  const righe = await fetch(`${API}/${comune}/edificio/${idEdificio}/scenari`)
+    .then(r => r.json()).catch(() => []);
+
+  if (!righe.length) {
+    contenitore.innerHTML = `<p class="aiuto">Dati non disponibili.</p>`;
+    return;
+  }
+
+  contenitore.innerHTML = righe.map(r => `
+    <div class="riga-scenario ${r.scenario === scenario ? "corrente" : ""}">
+      <span class="nome-scenario">${r.scenario}</span>
+      ${r.cer
+        ? `<span class="esito-scenario">in una comunità di ${r.n_membri} edifici
+             · ${numero(r.autoconsumo_diffuso)} kWh condivisi</span>`
+        : `<span class="esito-scenario assente">non rientra in alcuna comunità</span>`}
+    </div>`).join("") +
+    `<p class="aiuto">
+       A seconda del criterio di ottimizzazione, lo stesso edificio può entrare
+       in comunità diverse o restarne fuori.
+     </p>`;
 }
 
 async function apriComunita(codice) {

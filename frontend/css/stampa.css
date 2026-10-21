@@ -1,0 +1,93 @@
+/* Foglio di riepilogo, pensato per essere salvato in PDF */
+
+body.foglio {
+  background: var(--nebbia);
+  margin: 0;
+  padding: 0 0 50px;
+}
+
+.barra-stampa {
+  background: var(--grafite);
+  padding: 12px 20px;
+  display: flex;
+  gap: 16px;
+  align-items: center;
+}
+.barra-stampa button {
+  background: var(--indaco);
+  color: #fff;
+  border: 0;
+  border-radius: 3px;
+  padding: 9px 18px;
+  font-family: inherit;
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+}
+.barra-stampa button:hover { background: #4250c4; }
+.barra-stampa a { color: rgba(255,255,255,.75); text-decoration: none; font-size: 14px; }
+.barra-stampa a:hover { color: #fff; }
+
+#documento {
+  background: #fff;
+  max-width: 760px;
+  margin: 26px auto;
+  padding: 44px 50px 40px;
+  border: 1px solid var(--bordo);
+}
+
+.testata-foglio {
+  border-bottom: 2px solid var(--grafite);
+  padding-bottom: 16px;
+  margin-bottom: 26px;
+}
+.testata-foglio .ente {
+  font-size: 12px; font-weight: 700; letter-spacing: 1px;
+  color: var(--indaco); margin: 0 0 8px;
+}
+.testata-foglio h1 { font-size: 27px; margin: 0 0 6px; }
+.testata-foglio .data { color: var(--tenue); font-size: 13px; margin: 0; }
+
+#documento section { margin-bottom: 28px; }
+#documento h2 {
+  font-size: 16px; margin: 0 0 10px;
+  padding-bottom: 6px; border-bottom: 1px solid var(--bordo);
+}
+
+.spiegazione-foglio { line-height: 1.6; margin: 0 0 14px; }
+
+.scheda-dati { width: 100%; border-collapse: collapse; font-size: 14px; }
+.scheda-dati th {
+  text-align: left; font-weight: 400; color: var(--tenue);
+  padding: 6px 0; width: 46%;
+}
+.scheda-dati td {
+  padding: 6px 0; font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.scheda-dati tr { border-bottom: 1px solid var(--nebbia); }
+
+.scheda-dati.elenco th { width: auto; font-weight: 600; color: var(--testo); }
+.scheda-dati.elenco td { font-weight: 400; }
+.scheda-dati.elenco tr.evidenziato td { font-weight: 700; }
+
+.grafico-foglio { height: 210px; position: relative; margin-bottom: 8px; }
+.nota-foglio { font-size: 12.5px; color: var(--tenue); margin: 0; }
+
+.piede-foglio {
+  margin-top: 34px; padding-top: 14px;
+  border-top: 1px solid var(--bordo);
+  font-size: 12px; color: var(--tenue); line-height: 1.5;
+}
+
+/* Regole valide solo in stampa */
+@media print {
+  body.foglio { background: #fff; }
+  .barra-stampa { display: none; }
+  #documento {
+    max-width: none; margin: 0; padding: 0;
+    border: 0;
+  }
+  .evita-interruzione { break-inside: avoid; }
+  @page { margin: 18mm; }
+}
