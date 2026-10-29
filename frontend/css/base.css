@@ -629,7 +629,7 @@ a.marchio:hover { color: #fff; }
   border-radius: 3px;
   padding: 12px 14px 14px;
   box-shadow: 0 6px 20px rgba(28,34,48,.16);
-  min-width: 220px;
+  width: 250px;
 }
 #pannello-livelli[hidden] { display: none; }
 
@@ -740,10 +740,11 @@ a.marchio:hover { color: #fff; }
 }
 
 .spiegazione-tema {
-  font-size: 12.5px;
-  line-height: 1.5;
+  font-size: 12px;
+  line-height: 1.45;
   color: var(--tenue);
   margin: 7px 0 2px;
+  hyphens: auto;
 }
 
 .membri-tabella tbody tr.peb td:first-child 

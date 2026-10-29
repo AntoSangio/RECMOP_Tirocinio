@@ -1,7 +1,11 @@
 /**
- * Gestione della mappa: inizializzazione, sfondi, livelli, stili
- * e rappresentazione del flusso di energia.
- * Il resto dell'applicazione non conosce i dettagli di Leaflet.
+ * Gestione della mappa: inizializzazione, sfondi, livelli, stili,
+ * rappresentazioni tematiche e flusso di energia.
+ *
+ * Lo stile di ciascun edificio dipende da tre fattori che si combinano:
+ * il tema attivo, i filtri di visibilità e l'eventuale appartenenza alla
+ * comunità selezionata. Per evitare che si sovrascrivano a vicenda, è
+ * un'unica funzione (ridisegna) ad applicarli nell'ordine corretto.
  */
 
 const ZOOM = 14;
@@ -27,12 +31,31 @@ const SFONDI = {
   },
 };
 
+// Scala per la classe energetica: riprende la convenzione delle etichette
+const COLORI_CLASSE = {
+  "A4": "#1a9850", "A3": "#3fab5a", "A2": "#66bd63", "A1": "#8bcf6a",
+  "A":  "#66bd63", "B": "#a6d96a", "C": "#d9ef8b", "D": "#fee08b",
+  "E":  "#fdae61", "F": "#f46d43", "G": "#d73027",
+};
+
+// Scala sequenziale per le grandezze continue
+const SCALA = ["#dbe0f7", "#b6bfee", "#8e9be3", "#6b79d6", "#4f5dd8", "#343fa6"];
+const SENZA_VALORE = "#d7dbe3";
+
 let mappa;
 let stratoEdifici;
 let sfondoAttivo;
+let stratoComunita;
+let controlloLegenda;
+
 const edificiPerId = {};
-const disegni = [];      // linee e frecce disegnate sulla mappa
-let filtriAttivi = null; // ultimi filtri applicati, per ripristinare la visibilità
+const disegni = [];           // linee e frecce del flusso di energia
+
+let filtriAttivi = null;      // ultimi filtri applicati
+let temaAttivo = "nessuno";
+let soglie = null;            // limiti delle classi del tema attivo
+let membriEvidenziati = [];   // membri della comunità selezionata
+let idSelezionato = null;
 
 
 export function creaMappa(centro) {
@@ -69,77 +92,191 @@ export function disegnaEdifici(geojson, alClick) {
 }
 
 
+/* ------------------------------------------------------------------ */
+/*  Disegno degli edifici                                             */
+/* ------------------------------------------------------------------ */
+
 /**
- * Mostra o nasconde gli edifici secondo i filtri attivi.
- * Un edificio resta visibile solo se soddisfa sia il filtro sul ruolo
- * sia quello sulla partecipazione a una comunità.
+ * Applica a ogni edificio lo stile risultante da tema, filtri
+ * ed eventuale appartenenza alla comunità selezionata.
  */
-export function applicaFiltri(filtri) {
+function ridisegna() {
   if (!stratoEdifici) return;
-  filtriAttivi = filtri;
+
+  const ruoloDi = {};
+  for (const m of membriEvidenziati) ruoloDi[m.id_edificio] = m.ruolo;
 
   stratoEdifici.eachLayer(livello => {
-    const visibile = edificioVisibile(livello.feature.properties, filtri);
-    livello.setStyle({ opacity: visibile ? 1 : 0, fillOpacity: visibile ? 0.35 : 0 });
+    const p = livello.feature.properties;
+    const visibile = edificioVisibile(p);
+
+    let stile;
+
+    if (ruoloDi[p.id_edificio]) {
+      // I membri della comunità selezionata conservano il colore del ruolo
+      stile = { ...(ruoloDi[p.id_edificio] === "PEB" ? STILI.peb : STILI.neb) };
+    } else if (temaAttivo !== "nessuno") {
+      stile = {
+        color: "#8c93a1",
+        weight: 0.6,
+        fillColor: coloreTema(p),
+        fillOpacity: 0.85,
+      };
+    } else {
+      stile = { ...STILI.normale };
+    }
+
+    if (!visibile) {
+      stile.opacity = 0;
+      stile.fillOpacity = 0;
+    } else if (stile.opacity === undefined) {
+      stile.opacity = 1;
+    }
+
+    livello.setStyle(stile);
     if (livello._path) livello._path.style.pointerEvents = visibile ? "" : "none";
   });
+
+  // L'edificio selezionato ha un bordo scuro che lo distingue
+  if (idSelezionato && edificiPerId[idSelezionato]) {
+    edificiPerId[idSelezionato].setStyle({ color: "#111", weight: 3 });
+    edificiPerId[idSelezionato].bringToFront();
+  }
 }
 
 
-function edificioVisibile(p, filtri) {
-  if (!filtri) return true;
+function edificioVisibile(p) {
+  if (!filtriAttivi) return true;
 
-  const perRuolo = p.ruolo === "PEB" ? filtri.peb : filtri.neb;
+  const perRuolo = p.ruolo === "PEB" ? filtriAttivi.peb : filtriAttivi.neb;
 
   let perPartecipazione;
-  if (p.in_riuscita) perPartecipazione = filtri.riuscita;
-  else if (p.in_fallita) perPartecipazione = filtri.fallita;
-  else perPartecipazione = filtri.esclusi;
+  if (p.in_riuscita) perPartecipazione = filtriAttivi.riuscita;
+  else if (p.in_fallita) perPartecipazione = filtriAttivi.fallita;
+  else perPartecipazione = filtriAttivi.esclusi;
 
   return perRuolo && perPartecipazione;
 }
 
 
-export function evidenziaComunita(idSelezionato, membri) {
-  pulisci();
+export function applicaFiltri(filtri) {
+  filtriAttivi = filtri;
+  ridisegna();
+}
 
-  const daInquadrare = [];
-  const produttori = [];
-  const consumatori = [];
 
-  // Coloro ogni membro secondo il ruolo energetico
-  for (const m of membri) {
-    const livello = edificiPerId[m.id_edificio];
-    if (!livello) continue;
+/* ------------------------------------------------------------------ */
+/*  Rappresentazioni tematiche                                        */
+/* ------------------------------------------------------------------ */
 
-    livello.setStyle(m.ruolo === "PEB" ? STILI.peb : STILI.neb);
-    livello.bringToFront();
-    daInquadrare.push(livello);
-    (m.ruolo === "PEB" ? produttori : consumatori).push(livello);
+/**
+ * Colora gli edifici secondo un attributo. Le classi delle grandezze
+ * continue sono calcolate per quantili, così ogni classe contiene
+ * all'incirca lo stesso numero di edifici.
+ */
+export function applicaTema(tema) {
+  temaAttivo = tema;
+  soglie = (tema === "nessuno" || tema === "classe") ? null : calcolaQuantili(tema);
+
+  // Il tema riguarda l'intero territorio: la selezione di una comunità
+  // verrebbe nascosta, quindi la rimuovo per chiarezza
+  if (tema !== "nessuno") {
+    membriEvidenziati = [];
+    idSelezionato = null;
+    while (disegni.length) mappa.removeLayer(disegni.pop());
   }
 
-  // L'edificio selezionato ha un bordo scuro per distinguerlo
-  const selezionato = edificiPerId[idSelezionato];
-  if (selezionato) {
-    selezionato.setStyle({ color: "#111", weight: 3 });
-    if (!daInquadrare.includes(selezionato)) daInquadrare.push(selezionato);
+  ridisegna();
+  aggiornaLegenda();
+}
+
+
+function valoreTema(p) {
+  if (temaAttivo === "domanda") return p.domanda_annua ?? 0;
+  if (temaAttivo === "produzione") return p.produzione_annua ?? 0;
+  if (temaAttivo === "potenza") return p.potenza_picco ?? 0;
+  return 0;
+}
+
+
+function coloreTema(p) {
+  if (temaAttivo === "classe") {
+    return COLORI_CLASSE[p.classe_energetica] ?? SENZA_VALORE;
   }
+
+  const valore = valoreTema(p);
+  if (valore <= 0) return SENZA_VALORE;
+  if (!soglie) return SCALA[0];
+
+  for (let i = 0; i < soglie.length; i++) {
+    if (valore <= soglie[i]) return SCALA[i];
+  }
+  return SCALA[SCALA.length - 1];
+}
+
+
+function calcolaQuantili(tema) {
+  const precedente = temaAttivo;
+  temaAttivo = tema;
+
+  const valori = [];
+  stratoEdifici.eachLayer(l => {
+    const v = valoreTema(l.feature.properties);
+    if (v > 0) valori.push(v);
+  });
+
+  temaAttivo = precedente;
+  if (!valori.length) return null;
+
+  valori.sort((a, b) => a - b);
+  const limiti = [];
+  for (let i = 1; i <= SCALA.length; i++) {
+    limiti.push(valori[Math.floor((valori.length - 1) * i / SCALA.length)]);
+  }
+  return limiti;
+}
+
+
+/* ------------------------------------------------------------------ */
+/*  Selezione di una comunità                                         */
+/* ------------------------------------------------------------------ */
+
+export function evidenziaComunita(idSelezionatoNuovo, membri) {
+  while (disegni.length) mappa.removeLayer(disegni.pop());
+
+  membriEvidenziati = membri ?? [];
+  idSelezionato = idSelezionatoNuovo;
+  ridisegna();
+
+  const livelli = membriEvidenziati
+    .map(m => edificiPerId[m.id_edificio])
+    .filter(Boolean);
+
+  const produttori = membriEvidenziati
+    .filter(m => m.ruolo === "PEB")
+    .map(m => edificiPerId[m.id_edificio]).filter(Boolean);
+  const consumatori = membriEvidenziati
+    .filter(m => m.ruolo === "NEB")
+    .map(m => edificiPerId[m.id_edificio]).filter(Boolean);
 
   disegnaFlusso(produttori, consumatori);
 
-  if (daInquadrare.length) {
-    const gruppo = L.featureGroup(daInquadrare);
+  if (livelli.length) {
+    const gruppo = L.featureGroup(livelli);
     mappa.fitBounds(gruppo.getBounds(), { padding: [60, 60], maxZoom: 18 });
   }
 }
 
 
 /**
- * Evidenzia un singolo edificio, senza comunità:
- * serve quando l'edificio selezionato non appartiene ad alcun gruppo.
+ * Evidenzia un singolo edificio, senza comunità: serve quando
+ * l'edificio selezionato non appartiene ad alcun gruppo.
  */
 export function evidenziaSingolo(idEdificio) {
-  pulisci();
+  while (disegni.length) mappa.removeLayer(disegni.pop());
+  membriEvidenziati = [];
+  idSelezionato = idEdificio;
+  ridisegna();
 
   const livello = edificiPerId[idEdificio];
   if (!livello) return;
@@ -162,16 +299,22 @@ export function indicaEdificio(idEdificio, attivo) {
     livello.setStyle({ color: "#4f5dd8", weight: 4 });
     livello.bringToFront();
   } else {
-    const colore = livello.options.fillColor === "#16a34a" ? "#0b4f22" : "#7a1010";
-    livello.setStyle({ color: colore, weight: 2.5 });
+    ridisegna();
   }
+}
+
+
+export function pulisci() {
+  membriEvidenziati = [];
+  idSelezionato = null;
+  while (disegni.length) mappa.removeLayer(disegni.pop());
+  ridisegna();
 }
 
 
 /**
  * Disegna il flusso di energia: una linea orientata da ogni produttore
- * verso ogni consumatore della comunità. Le linee sono sottili e poco
- * marcate perché in comunità numerose il loro numero cresce rapidamente.
+ * verso ogni consumatore della comunità.
  */
 function disegnaFlusso(produttori, consumatori) {
   if (!produttori.length || !consumatori.length) return;
@@ -213,18 +356,62 @@ function disegnaFlusso(produttori, consumatori) {
 }
 
 
-export function pulisci() {
-  if (stratoEdifici) {
-    if (temaAttivo === "nessuno") {
-      stratoEdifici.setStyle(STILI.normale);
-    } else {
-      applicaTema(temaAttivo);   // ridisegna il tema invece dello stile neutro
-    }
-    if (filtriAttivi) applicaFiltri(filtriAttivi);
+/* ------------------------------------------------------------------ */
+/*  Panoramica delle comunità                                         */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Mostra tutte le comunità come indicatori posizionati al loro centro.
+ * La dimensione è proporzionale all'energia condivisa, cioè al beneficio
+ * prodotto dalla comunità, non al semplice numero di edifici.
+ */
+export function mostraComunita(posizioni, alClick) {
+  nascondiComunita();
+  if (!posizioni?.length) return;
+
+  stratoComunita = L.layerGroup().addTo(mappa);
+
+  const valori = posizioni.map(p => p.autoconsumo_diffuso ?? 0);
+  const massimo = Math.max(...valori, 1);
+
+  const formato = (n) => Math.round(n ?? 0).toLocaleString("it-IT");
+
+  for (const p of posizioni) {
+    if (p.lat == null || p.lon == null) continue;
+
+    // La radice quadrata evita che poche comunità molto grandi
+    // schiaccino tutte le altre
+    const quota = Math.sqrt((p.autoconsumo_diffuso ?? 0) / massimo);
+    const raggio = 5 + 16 * quota;
+
+    const indicatore = L.circleMarker([p.lat, p.lon], {
+      radius: raggio,
+      color: "#0b4f22",
+      weight: 1.5,
+      fillColor: "#16a34a",
+      fillOpacity: 0.5,
+    }).addTo(stratoComunita);
+
+    indicatore.bindTooltip(
+      `${formato(p.autoconsumo_diffuso)} kWh condivisi · ${p.n_membri} edifici`,
+      { direction: "top" }
+    );
+    indicatore.on("click", () => alClick(p.codice));
   }
-  while (disegni.length) mappa.removeLayer(disegni.pop());
 }
 
+
+export function nascondiComunita() {
+  if (stratoComunita) {
+    mappa.removeLayer(stratoComunita);
+    stratoComunita = null;
+  }
+}
+
+
+/* ------------------------------------------------------------------ */
+/*  Legenda                                                           */
+/* ------------------------------------------------------------------ */
 
 function aggiungiLegenda() {
   controlloLegenda = L.control({ position: "bottomright" });
@@ -236,96 +423,6 @@ function aggiungiLegenda() {
   controlloLegenda.addTo(mappa);
 }
 
-/* --- Rappresentazioni tematiche --- */
-
-// Scala per la classe energetica: riprende la convenzione delle etichette
-const COLORI_CLASSE = {
-  "A4": "#1a9850", "A3": "#3fab5a", "A2": "#66bd63", "A1": "#8bcf6a",
-  "A":  "#66bd63", "B": "#a6d96a", "C": "#d9ef8b", "D": "#fee08b",
-  "E":  "#fdae61", "F": "#f46d43", "G": "#d73027",
-};
-
-// Scala sequenziale per le grandezze continue, dal chiaro allo scuro
-const SCALA = ["#f1f3fb", "#c9cfee", "#9ba5e0", "#6e7bd3", "#4f5dd8", "#343fa6"];
-
-let temaAttivo = "nessuno";
-let soglie = null;
-
-/**
- * Colora gli edifici secondo un attributo.
- * Le classi delle grandezze continue sono calcolate per quantili,
- * così ogni classe contiene all'incirca lo stesso numero di edifici
- * e la rappresentazione resta leggibile anche con valori estremi.
- */
-export function applicaTema(tema) {
-  if (!stratoEdifici) return;
-  temaAttivo = tema;
-
-  if (tema === "nessuno") {
-    soglie = null;
-    stratoEdifici.setStyle(STILI.normale);
-    if (filtriAttivi) applicaFiltri(filtriAttivi);
-    aggiornaLegenda();
-    return;
-  }
-
-  if (tema !== "classe") {
-    soglie = calcolaQuantili(tema);
-  }
-
-  stratoEdifici.eachLayer(livello => {
-    const p = livello.feature.properties;
-    livello.setStyle({
-      fillColor: coloreTema(p, tema),
-      color: "#9aa1ad",
-      weight: 0.5,
-      fillOpacity: 0.85,
-    });
-  });
-
-  if (filtriAttivi) applicaFiltri(filtriAttivi);
-  aggiornaLegenda();
-}
-
-function valoreTema(p, tema) {
-  if (tema === "domanda") return p.domanda_annua ?? 0;
-  if (tema === "produzione") return p.produzione_annua ?? 0;
-  if (tema === "potenza") return p.potenza_picco ?? 0;
-  return 0;
-}
-
-function coloreTema(p, tema) {
-  if (tema === "classe") {
-    return COLORI_CLASSE[p.classe_energetica] ?? "#cbd0da";
-  }
-
-  const valore = valoreTema(p, tema);
-  if (valore <= 0) return "#e4e7ee";          // nessun impianto o nessun dato
-  if (!soglie) return SCALA[0];
-
-  for (let i = 0; i < soglie.length; i++) {
-    if (valore <= soglie[i]) return SCALA[i];
-  }
-  return SCALA[SCALA.length - 1];
-}
-
-/** Divide i valori in classi di uguale numerosità. */
-function calcolaQuantili(tema) {
-  const valori = [];
-  stratoEdifici.eachLayer(l => {
-    const v = valoreTema(l.feature.properties, tema);
-    if (v > 0) valori.push(v);
-  });
-  valori.sort((a, b) => a - b);
-  if (!valori.length) return null;
-
-  const classi = SCALA.length;
-  const limiti = [];
-  for (let i = 1; i <= classi; i++) {
-    limiti.push(valori[Math.floor((valori.length - 1) * i / classi)]);
-  }
-  return limiti;
-}
 
 const UNITA = { domanda: "kWh", produzione: "kWh", potenza: "kW" };
 const TITOLO = {
@@ -335,7 +432,6 @@ const TITOLO = {
   potenza: "Potenza installata",
 };
 
-let controlloLegenda;
 
 function aggiornaLegenda() {
   if (!controlloLegenda) return;
@@ -371,55 +467,15 @@ function aggiornaLegenda() {
 
   div.innerHTML = `<p class="titolo-legenda">${TITOLO[temaAttivo]} (${unita})</p>${voci}
     <div class="voce-legenda">
-      <span class="campione" style="background:#e4e7ee"></span> nessuno
+      <span class="campione" style="background:${SENZA_VALORE}"></span> nessuno
     </div>`;
 }
 
-function legendaBase() 
-{
+
+function legendaBase() {
   return `
     <div class="voce-legenda"><span class="campione" style="background:#3b82f6"></span> Edificio</div>
     <div class="voce-legenda"><span class="campione" style="background:#16a34a"></span> PEB · produce energia</div>
     <div class="voce-legenda"><span class="campione" style="background:#dc2626"></span> NEB · consuma energia</div>
     <div class="voce-legenda"><span class="filetto"></span> Flusso di energia</div>`;
-}
-
-/* --- Panoramica delle comunità --- */
-
-let stratoComunita;
-
-/**
- * Mostra tutte le comunità come indicatori posizionati al loro centro.
- * Dà il colpo d'occhio sulla distribuzione territoriale, che la sola
- * colorazione degli edifici non permette a scala di comune.
- */
-export function mostraComunita(posizioni, alClick) {
-  nascondiComunita();
-
-  stratoComunita = L.layerGroup().addTo(mappa);
-
-  for (const p of posizioni) {
-    if (p.lat == null || p.lon == null) continue;
-
-    const indicatore = L.circleMarker([p.lat, p.lon], {
-      radius: 6 + Math.min(p.n_membri, 12),
-      color: "#0b4f22",
-      weight: 1.5,
-      fillColor: "#16a34a",
-      fillOpacity: 0.55,
-    }).addTo(stratoComunita);
-
-    indicatore.bindTooltip(
-      `Comunità di ${p.n_membri} edifici`,
-      { direction: "top" }
-    );
-    indicatore.on("click", () => alClick(p.codice));
-  }
-}
-
-export function nascondiComunita() {
-  if (stratoComunita) {
-    mappa.removeLayer(stratoComunita);
-    stratoComunita = null;
-  }
 }
